@@ -24,8 +24,8 @@ print(ds_train.X_hr)
 
 
 # ds_--- are the datasets. To access individual samples, you can index along the 'sample' dimension. For example, to get the first sample:
-sample_0_hr = ds_train.X_hr.isel(sample=0)
-sample_0_lr = ds_train.X_lr.isel(sample=0)
+sample_0_hr = ds_train["X_hr"].isel(sample=0)
+sample_0_lr = ds_train["X_lr"].isel(sample=0)
 
 #Each of these will be an xarray DataArray with dimensions (channel, latitude, longitude) and a coordinate 'time' 
 # that gives the timestamp for that sample. You can check the variable names and dimensions like this:
@@ -44,7 +44,3 @@ sample_0_hr_u = sample_0_hr.sel(channel='10m_u_component_of_wind')
 loaded_data = sample_0_hr.load()
 #or if you only want to load a specific variable:
 loaded_temp = sample_0_hr.sel(channel='2m_temperature').load()
-
-
-
-
