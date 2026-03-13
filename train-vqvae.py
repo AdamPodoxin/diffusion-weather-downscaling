@@ -25,7 +25,7 @@ VQVAE_PATH = MODELS_PATH / "vqvae"
 # Batch size set to whatever GPU VRAM can handle
 BATCH_SIZE = 96
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 50
 
 WIND_DIR_AND_PRESSURE_CHANNELS = \
 [
