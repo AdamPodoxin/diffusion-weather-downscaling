@@ -20,7 +20,7 @@ TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
 MODELS_PATH = Path("models")
-VQVAE_PATH = MODELS_PATH / "vqvae"
+VQVAE_PATH = MODELS_PATH / "vqvae-finetuned"
 
 # Batch size set to whatever GPU VRAM can handle
 BATCH_SIZE = 96
@@ -172,7 +172,7 @@ if __name__ == "__main__":
             train_loss=avg_train_loss,
             val_loss=avg_val_loss,
             optimizer=optimizer,
-            path=VQVAE_PATH / f"vqvae-trained-{epoch}.pt"
+            path=VQVAE_PATH / f"vqvae-finetuned-{epoch}.pt"
         )
 
         if avg_val_loss < best_val_loss:
@@ -186,7 +186,7 @@ if __name__ == "__main__":
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 optimizer=optimizer,
-                path=VQVAE_PATH / "vqvae-trained.pt"
+                path=VQVAE_PATH / "vqvae-finetuned.pt"
             )
     
     print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.2f}")
