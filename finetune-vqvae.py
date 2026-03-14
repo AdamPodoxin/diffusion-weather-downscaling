@@ -25,9 +25,9 @@ VAL_PATH = DATA_PATH / "val.zarr"
 MODELS_DIR = Path("models")
 VQVAE_DIR = MODELS_DIR / "vqvae-finetuned"
 
-# Set to whatever GPU VRAM can handle, but 
-# must be factor of number of samples.
-BATCH_SIZE = 96
+# Set to whatever GPU VRAM can handle, but must be factor of 
+# number of training samples AND number of validation samples.
+BATCH_SIZE = 100
 
 NUM_EPOCHS = 50
 
@@ -64,6 +64,18 @@ if __name__ == "__main__":
     best_val_loss = math.inf
     best_epoch = 0
 
+    def loop_logic(X: torch.Tensor):
+        X = X.to(device)
+        X_normalized, _, _ = normalize_across_channels(X)
+
+        output: DecoderOutput = vqvae(X_normalized)
+        output_sample = output.sample
+        output_sample_normalized, _, _ = normalize_across_channels(output_sample)
+
+        loss = loss_fn(output_sample_normalized, X_normalized)
+        return loss
+
+
     for epoch in range(NUM_EPOCHS):
         vqvae.train()
         print("\nEpoch", epoch)
@@ -74,14 +86,7 @@ if __name__ == "__main__":
         
         print("Training:")
         for X in tqdm(batch_generator, total=num_batches):
-            X = X.to(device)
-            X_normalized, _, _ = normalize_across_channels(X)
-
-            output: DecoderOutput = vqvae(X_normalized)
-            output_sample = output.sample
-            output_sample_normalized, _, _ = normalize_across_channels(output_sample)
-
-            loss = loss_fn(output_sample_normalized, X_normalized)
+            loss = loop_logic(X)
             avg_train_loss += loss.item()
             loss.backward()
 
@@ -100,14 +105,7 @@ if __name__ == "__main__":
             
             print("Validation:")
             for V in tqdm(val_batch_generator, total=num_val_batches):
-                V = V.to(device)
-                V_normalized, _, _ = normalize_across_channels(V)
-
-                output_val: DecoderOutput = vqvae(V_normalized)
-                output_sample_val = output_val.sample
-                output_sample_val_normalized, _, _ = normalize_across_channels(output_sample_val)
-
-                loss_val = loss_fn(output_sample_val_normalized, V_normalized)
+                loss_val = loop_logic(V)
                 avg_val_loss += loss_val.item()
 
         avg_val_loss /= num_val_batches

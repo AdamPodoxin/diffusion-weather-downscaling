@@ -31,9 +31,9 @@ MODELS_DIR = Path("models")
 VQVAE_PATH = MODELS_DIR / "vqvae-finetuned" / "vqvae-finetuned.pt"
 UNET_DIR = MODELS_DIR / "unet-finetuned"
 
-# Set to whatever GPU VRAM can handle, but 
-# must be factor of number of samples.
-BATCH_SIZE = 64
+# Set to whatever GPU VRAM can handle, but must be factor of 
+# number of training samples AND number of validation samples.
+BATCH_SIZE = 50
 
 NUM_EPOCHS = 50
 
@@ -53,14 +53,14 @@ if __name__ == "__main__":
                 .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="unet") \
                 .to(device)
 
-    _vqvae = VQModel \
+    vqvae = VQModel \
                 .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
                 .to(device)
 
     # Need to use the fine-tuned VQVAE for generating latents
     vqvae_state_dict = load_model_state_dict(VQVAE_PATH)
-    _vqvae.load_state_dict(vqvae_state_dict)
-    _vqvae.requires_grad_(False)
+    vqvae.load_state_dict(vqvae_state_dict)
+    vqvae.requires_grad_(False)
 
     noise_scheduler = DDPMScheduler \
                 .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="scheduler")
@@ -81,16 +81,39 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(unet.parameters(), lr=2e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
 
-    # TODO: temp
-    X_lr_train_subset = X_lr_train_subset.isel(sample=slice(0, 1_024))
-    X_hr_train_subset = X_hr_train_subset.isel(sample=slice(0, 1_024))
-    X_lr_val_subset = X_lr_val_subset.isel(sample=slice(0, 128))
-    X_hr_val_subset = X_hr_val_subset.isel(sample=slice(0, 128))
-
     num_batches = X_lr_train_subset.sizes["sample"] // BATCH_SIZE
 
     best_val_loss = math.inf
     best_epoch = 0
+
+    def loop_logic(X: torch.Tensor, Y: torch.Tensor):
+        X = X.to(device)
+        X_normalized, _, _ = normalize_across_channels(X)
+
+        Y = Y.to(device)
+        Y_normalized, _, _ = normalize_across_channels(Y)
+
+        with torch.no_grad():
+            latents = vqvae.encode(Y_normalized).latents
+        
+        noise = torch.randn_like(latents)
+        
+        timesteps = torch.randint(
+            low=0,
+            high=noise_scheduler.config["num_train_timesteps"],
+            size=(BATCH_SIZE,),
+            device=device
+        ).long()
+
+        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+        unet_input = torch.cat([noisy_latents, X_normalized], dim=1)
+
+        unet_output: UNet2DOutput = unet(unet_input, timesteps)
+        predicted_noise = unet_output.sample
+
+        loss = loss_fn(predicted_noise.float(), noise.float(), reduction="mean")
+        return loss
+
 
     for epoch in range(NUM_EPOCHS):
         unet.train()
@@ -103,32 +126,7 @@ if __name__ == "__main__":
         
         print("Training:")
         for X, Y in tqdm(zip(lr_batch_generator, hr_batch_generator), total=num_batches):
-            X = X.to(device)
-            X_normalized, _, _ = normalize_across_channels(X)
-
-            Y = Y.to(device)
-            Y_normalized, _, _ = normalize_across_channels(Y)
-
-            with torch.no_grad():
-                latents = _vqvae.encode(Y_normalized).latents
-            
-            noise = torch.randn_like(latents)
-            
-            timesteps = torch.randint(
-                low=0,
-                high=noise_scheduler.config["num_train_timesteps"],
-                size=(BATCH_SIZE,),
-                device=device
-            ).long()
-
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-            unet_input = torch.cat([noisy_latents, X_normalized], dim=1)
-
-            unet_output: UNet2DOutput = unet(unet_input, timesteps)
-            predicted_noise = unet_output.sample
-
-            loss = loss_fn(predicted_noise.float(), noise.float(), reduction="mean")
+            loss = loop_logic(X, Y)
             avg_train_loss += loss.item()
             loss.backward()
 
@@ -148,31 +146,7 @@ if __name__ == "__main__":
             
             print("Validation:")
             for V_lr, V_hr in tqdm(zip(lr_val_batch_generator, hr_val_batch_generator), total=num_val_batches):
-                V_lr = V_lr.to(device)
-                V_lr_normalized, _, _ = normalize_across_channels(V_lr)
-
-                V_hr = V_hr.to(device)
-                V_hr_normalized, _, _ = normalize_across_channels(V_hr)
-                
-                latents_val = _vqvae.encode(V_hr_normalized).latents
-            
-                noise_val = torch.randn_like(latents)
-                
-                timesteps_val = torch.randint(
-                    low=0,
-                    high=noise_scheduler.config["num_train_timesteps"],
-                    size=(BATCH_SIZE,),
-                    device=device
-                ).long()
-
-                noisy_latents_val = noise_scheduler.add_noise(latents_val, noise_val, timesteps_val)
-
-                unet_input_val = torch.cat([noisy_latents_val, V_lr_normalized], dim=1)
-
-                unet_output_val: UNet2DOutput = unet(unet_input_val, timesteps_val)
-                predicted_noise_val = unet_output_val.sample
-
-                loss_val = loss_fn(predicted_noise_val.float(), noise_val.float(), reduction="mean")
+                loss_val = loop_logic(V_lr, V_hr)
                 avg_val_loss += loss_val.item()
 
         print(f"Average training loss: {avg_train_loss:.2f}")
