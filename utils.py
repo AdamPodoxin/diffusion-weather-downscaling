@@ -56,3 +56,8 @@ def save_checkpoint(
     }
 
     torch.save(checkpoint, path)
+
+
+def load_model_state_dict(model_file_path: Path):
+    model_dict = torch.load(model_file_path)
+    return model_dict["model_state_dict"]

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion_superresolution import LDMSuperResolutionPipeline 
 from diffusers.models.autoencoders.vq_model import VQModel
 from diffusers.models.autoencoders.vae import DecoderOutput
 
@@ -15,7 +14,8 @@ import math
 from utils import (
     generate_batches, 
     normalize_across_channels, 
-    save_checkpoint)
+    save_checkpoint,
+)
 
 
 DATA_PATH = Path("data")
@@ -25,7 +25,8 @@ VAL_PATH = DATA_PATH / "val.zarr"
 MODELS_DIR = Path("models")
 VQVAE_DIR = MODELS_DIR / "vqvae-finetuned"
 
-# Batch size set to whatever GPU VRAM can handle
+# Set to whatever GPU VRAM can handle, but 
+# must be factor of number of samples.
 BATCH_SIZE = 96
 
 NUM_EPOCHS = 50
@@ -42,10 +43,9 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Running on", device)
     
-    pipeline = LDMSuperResolutionPipeline.from_pretrained("CompVis/ldm-super-resolution-4x-openimages")
-    pipeline = pipeline.to(device)
-
-    vqvae: VQModel = pipeline.vqvae
+    vqvae = VQModel \
+                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
+                .to(device)
 
     ds_train = xr.open_zarr(TRAIN_PATH)
     X_lr_train = ds_train["X_lr"]
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         )
 
         if avg_val_loss < best_val_loss:
-            best_val_loss = avg_train_loss
+            best_val_loss = avg_val_loss
             best_epoch = epoch
 
             print("Saving epoch", epoch, "as best model")
