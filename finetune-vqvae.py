@@ -3,24 +3,27 @@ from pathlib import Path
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion_superresolution import LDMSuperResolutionPipeline 
 from diffusers.models.autoencoders.vq_model import VQModel
 from diffusers.models.autoencoders.vae import DecoderOutput
-from diffusers.models import ModelMixin
 
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.optim import Optimizer
 
 import xarray as xr
 from tqdm import tqdm
 
 import math
 
+from utils import (
+    generate_batches, 
+    normalize_across_channels, 
+    save_checkpoint)
+
 
 DATA_PATH = Path("data")
 TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
-MODELS_PATH = Path("models")
-VQVAE_PATH = MODELS_PATH / "vqvae-finetuned"
+MODELS_DIR = Path("models")
+VQVAE_DIR = MODELS_DIR / "vqvae-finetuned"
 
 # Batch size set to whatever GPU VRAM can handle
 BATCH_SIZE = 96
@@ -33,56 +36,6 @@ WIND_DIR_AND_PRESSURE_CHANNELS = \
     "10m_v_component_of_wind", 
     "mean_sea_level_pressure"
 ]
-
-
-def z_normalize_tensor(tensor: torch.Tensor):
-    mean = tensor.mean()
-    std = tensor.std()
-    normalized_tensor = (tensor - mean) / std
-    return normalized_tensor, mean, std
-
-
-def normalize_across_channels(X: torch.Tensor, channel_dim=1):
-    num_channels = X.shape[channel_dim]
-
-    channel_means = [0 for _ in range(num_channels)]
-    channel_stds = [0 for _ in range(num_channels)]
-    
-    X_normalized = torch.empty_like(X)
-
-    for channel in range(num_channels):
-        X_normalized[:, channel, :, :], mean, std = z_normalize_tensor(X[:, channel, :, :])
-        
-        channel_means[channel] = mean
-        channel_stds[channel] = std
-
-    return X_normalized, channel_means, channel_stds
-
-
-def generate_batches(data: xr.DataArray, batch_size=32):
-    for i in range(0, data.sizes["sample"], batch_size):
-        batch = data.isel(sample=slice(i, i + batch_size))
-        batch_tensor = torch.from_numpy(batch.values)
-        yield batch_tensor
-
-
-def save_checkpoint(
-        model: ModelMixin, 
-        epoch: int, 
-        train_loss: float, 
-        val_loss: float, 
-        optimizer: Optimizer, 
-        path: Path):
-    
-    checkpoint = {
-        "epoch": epoch,
-        "train_loss": train_loss,
-        "val_loss": val_loss,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-    }
-
-    torch.save(checkpoint, path)
 
 
 if __name__ == "__main__":
@@ -172,7 +125,7 @@ if __name__ == "__main__":
             train_loss=avg_train_loss,
             val_loss=avg_val_loss,
             optimizer=optimizer,
-            path=VQVAE_PATH / f"vqvae-finetuned-{epoch}.pt"
+            path=VQVAE_DIR / f"vqvae-finetuned-{epoch}.pt"
         )
 
         if avg_val_loss < best_val_loss:
@@ -186,7 +139,7 @@ if __name__ == "__main__":
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 optimizer=optimizer,
-                path=VQVAE_PATH / "vqvae-finetuned.pt"
+                path=VQVAE_DIR / "vqvae-finetuned.pt"
             )
     
     print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.2f}")
