@@ -18,18 +18,22 @@ from utils import (
 )
 
 
-DATA_PATH = Path("data")
+# For CSIL
+DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
+# DATA_PATH = Path("data")
 TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
+# For CSIL
+# MODELS_DIR = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project/models")
 MODELS_DIR = Path("models")
 VQVAE_DIR = MODELS_DIR / "vqvae-finetuned"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 100
+BATCH_SIZE = 300
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 10
 
 WIND_DIR_AND_PRESSURE_CHANNELS = \
 [
