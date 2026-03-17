@@ -1,0 +1,156 @@
+from pathlib import Path
+
+from diffusers.models.autoencoders.vq_model import VQModel
+from diffusers.models.autoencoders.vae import DecoderOutput
+
+import torch
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
+import xarray as xr
+from tqdm import tqdm
+
+import math
+
+from utils import (
+    generate_batches, 
+    normalize_across_channels, 
+    save_checkpoint,
+)
+
+
+# For CSIL
+DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
+# DATA_PATH = Path("data")
+TRAIN_PATH = DATA_PATH / "train.zarr"
+VAL_PATH = DATA_PATH / "val.zarr"
+
+# For CSIL
+# MODELS_DIR = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project/models")
+MODELS_DIR = Path("models")
+VQVAE_DIR = MODELS_DIR / "vqvae-trained"
+
+# Set to whatever GPU VRAM can handle, but must be factor of 
+# number of training samples AND number of validation samples.
+BATCH_SIZE = 300
+
+NUM_EPOCHS = 10
+
+
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("Running on", device)
+    
+    vqvae = VQModel \
+                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
+                .to(device)
+
+    original_input_layer = vqvae.encoder.conv_in
+    vqvae.encoder.conv_in = torch.nn.Conv2d(
+        in_channels=4,
+        out_channels=original_input_layer.out_channels,
+        kernel_size=original_input_layer.kernel_size,
+        stride=original_input_layer.stride,
+        padding=original_input_layer.padding,
+    ).to(device)
+    
+    original_output_layer = vqvae.decoder.conv_out
+    vqvae.decoder.conv_out = torch.nn.Conv2d(
+        in_channels=original_output_layer.in_channels,
+        out_channels=4,
+        kernel_size=original_output_layer.kernel_size,
+        stride=original_output_layer.stride,
+        padding=original_output_layer.padding,
+    ).to(device)
+
+    ds_train = xr.open_zarr(TRAIN_PATH)
+    X_lr_train = ds_train["X_lr"]
+
+    ds_val = xr.open_zarr(VAL_PATH)
+    X_lr_val = ds_val["X_lr"]
+    
+    loss_fn = torch.nn.functional.l1_loss
+    optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
+    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
+
+    num_batches = X_lr_train.sizes["sample"] // BATCH_SIZE
+
+    best_val_loss = math.inf
+    best_epoch = 0
+
+    def loop_logic(X: torch.Tensor):
+        X = X.to(device)
+        X_normalized, _, _ = normalize_across_channels(X)
+
+        output: DecoderOutput = vqvae(X_normalized)
+        output_sample = output.sample
+        output_sample_normalized, _, _ = normalize_across_channels(output_sample)
+
+        loss = loss_fn(output_sample_normalized, X_normalized)
+        return loss
+
+
+    for epoch in range(NUM_EPOCHS):
+        vqvae.train()
+        print("\nEpoch", epoch)
+
+        avg_train_loss = 0
+        
+        batch_generator = generate_batches(X_lr_train, batch_size=BATCH_SIZE)
+        
+        print("Training:")
+        for X in tqdm(batch_generator, total=num_batches):
+            loss = loop_logic(X)
+            avg_train_loss += loss.item()
+            loss.backward()
+
+            optimizer.step()
+            optimizer.zero_grad()
+        
+        vqvae.eval()
+
+        avg_train_loss /= num_batches
+
+        num_val_batches = X_lr_val.sizes["sample"] // BATCH_SIZE
+        avg_val_loss = 0
+
+        with torch.no_grad():
+            val_batch_generator = generate_batches(X_lr_val, batch_size=BATCH_SIZE)
+            
+            print("Validation:")
+            for V in tqdm(val_batch_generator, total=num_val_batches):
+                loss_val = loop_logic(V)
+                avg_val_loss += loss_val.item()
+
+        avg_val_loss /= num_val_batches
+
+        print(f"Average training loss: {avg_train_loss:.2f}")
+        print(f"Average validation loss: {avg_val_loss:.2f}")
+
+        torch.cuda.empty_cache()
+        
+        scheduler.step()
+
+        save_checkpoint(
+            model=vqvae,
+            epoch=epoch,
+            train_loss=avg_train_loss,
+            val_loss=avg_val_loss,
+            optimizer=optimizer,
+            path=VQVAE_DIR / f"vqvae-trained-{epoch}.pt"
+        )
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_epoch = epoch
+
+            print("Saving epoch", epoch, "as best model")
+            save_checkpoint(
+                model=vqvae,
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                optimizer=optimizer,
+                path=VQVAE_DIR / "vqvae-trained.pt"
+            )
+    
+    print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.2f}")
