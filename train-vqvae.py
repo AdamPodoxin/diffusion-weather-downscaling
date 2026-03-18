@@ -69,9 +69,6 @@ if __name__ == "__main__":
     ds_val = xr.open_zarr(VAL_PATH)
     X_lr_val = ds_val["X_lr"]
 
-    X_lr_train = X_lr_train.isel(sample=range(BATCH_SIZE * 2))
-    X_lr_val = X_lr_val.isel(sample=range(BATCH_SIZE * 2))
-    
     loss_fn = torch.nn.functional.l1_loss
     optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
