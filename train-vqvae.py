@@ -7,6 +7,7 @@ import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 import xarray as xr
+import pandas as pd
 from tqdm import tqdm
 
 import math
@@ -24,8 +25,6 @@ DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
 TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
-# For CSIL
-# MODELS_DIR = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project/models")
 MODELS_DIR = Path("models")
 VQVAE_DIR = MODELS_DIR / "vqvae-trained"
 
@@ -33,7 +32,9 @@ VQVAE_DIR = MODELS_DIR / "vqvae-trained"
 # number of training samples AND number of validation samples.
 BATCH_SIZE = 300
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 100
+
+SAVE_EVERY_EPOCH = False
 
 
 if __name__ == "__main__":
@@ -67,6 +68,9 @@ if __name__ == "__main__":
 
     ds_val = xr.open_zarr(VAL_PATH)
     X_lr_val = ds_val["X_lr"]
+
+    X_lr_train = X_lr_train.isel(sample=range(BATCH_SIZE * 2))
+    X_lr_val = X_lr_val.isel(sample=range(BATCH_SIZE * 2))
     
     loss_fn = torch.nn.functional.l1_loss
     optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
@@ -89,6 +93,9 @@ if __name__ == "__main__":
         return loss
 
 
+    train_losses = [math.inf for _ in range(NUM_EPOCHS)]
+    val_losses = [math.inf for _ in range(NUM_EPOCHS)]
+
     for epoch in range(NUM_EPOCHS):
         vqvae.train()
         print("\nEpoch", epoch)
@@ -109,6 +116,7 @@ if __name__ == "__main__":
         vqvae.eval()
 
         avg_train_loss /= num_batches
+        train_losses[epoch] = avg_train_loss
 
         num_val_batches = X_lr_val.sizes["sample"] // BATCH_SIZE
         avg_val_loss = 0
@@ -122,22 +130,24 @@ if __name__ == "__main__":
                 avg_val_loss += loss_val.item()
 
         avg_val_loss /= num_val_batches
+        val_losses[epoch] = avg_val_loss
 
-        print(f"Average training loss: {avg_train_loss:.2f}")
-        print(f"Average validation loss: {avg_val_loss:.2f}")
+        print(f"Average training loss: {avg_train_loss:.4f}")
+        print(f"Average validation loss: {avg_val_loss:.4f}")
 
         torch.cuda.empty_cache()
         
         scheduler.step()
 
-        save_checkpoint(
-            model=vqvae,
-            epoch=epoch,
-            train_loss=avg_train_loss,
-            val_loss=avg_val_loss,
-            optimizer=optimizer,
-            path=VQVAE_DIR / f"vqvae-trained-{epoch}.pt"
-        )
+        if SAVE_EVERY_EPOCH:
+            save_checkpoint(
+                model=vqvae,
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                optimizer=optimizer,
+                path=VQVAE_DIR / f"vqvae-trained-{epoch}.pt"
+            )
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
@@ -153,4 +163,13 @@ if __name__ == "__main__":
                 path=VQVAE_DIR / "vqvae-trained.pt"
             )
     
-    print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.2f}")
+    print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.4f}")
+
+    losses_df = pd.DataFrame(
+        data={
+            "epoch": [epoch for epoch in range(NUM_EPOCHS)],
+            "train loss": train_losses,
+            "validation loss": val_losses,
+        }
+    )
+    losses_df.to_csv(VQVAE_DIR / "losses.csv", index=False)

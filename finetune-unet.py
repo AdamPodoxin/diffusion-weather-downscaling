@@ -149,8 +149,8 @@ if __name__ == "__main__":
                 loss_val = loop_logic(V_lr, V_hr)
                 avg_val_loss += loss_val.item()
 
-        print(f"Average training loss: {avg_train_loss:.2f}")
-        print(f"Average validation loss: {avg_val_loss:.2f}")
+        print(f"Average training loss: {avg_train_loss:.4f}")
+        print(f"Average validation loss: {avg_val_loss:.4f}")
 
         torch.cuda.empty_cache()
         
@@ -179,4 +179,4 @@ if __name__ == "__main__":
                 path=UNET_DIR / "unet-finetuned.pt"
             )
     
-    print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.2f}")
+    print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.4f}")
