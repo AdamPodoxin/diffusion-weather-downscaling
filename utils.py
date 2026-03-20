@@ -85,27 +85,16 @@ def get_4channel_vqvae(device: str):
 
 
 def get_4channel_unet(device: str, num_latents=3):
-    # TODO: make this work from config too
+    config: dict[str] = VQModel.load_config(
+        "CompVis/ldm-super-resolution-4x-openimages", 
+        subfolder="unet"
+    )
+
+    config["in_channels"] = 8 # 4 image channels, 4 latent channels
+    config["out_channels"] = 4
+
     unet = UNet2DModel \
-            .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="unet") \
+            .from_config(config) \
             .to(device)
     
-    original_input_layer = unet.conv_in
-    unet.conv_in = torch.nn.Conv2d(
-        in_channels=num_latents + 4,
-        out_channels=original_input_layer.out_channels,
-        kernel_size=original_input_layer.kernel_size,
-        stride=original_input_layer.stride,
-        padding=original_input_layer.padding,
-    ).to(device)
-
-    original_output_layer = unet.conv_out
-    unet.conv_out = torch.nn.Conv2d(
-        in_channels=original_output_layer.in_channels,
-        out_channels=4,
-        kernel_size=original_output_layer.kernel_size,
-        stride=original_output_layer.stride,
-        padding=original_output_layer.padding,
-    ).to(device)
-
     return unet
