@@ -67,74 +67,25 @@ def load_model_state_dict(model_file_path: Path):
 
 
 def get_4channel_vqvae(device: str):
-    vqvae = VQModel \
-                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
-                .to(device)
+    config: dict[str] = VQModel.load_config(
+        "CompVis/ldm-super-resolution-4x-openimages", 
+        subfolder="vqvae"
+    )
 
-    encoder_conv_in = vqvae.encoder.conv_in
-    vqvae.encoder.conv_in = torch.nn.Conv2d(
-        in_channels=4,
-        out_channels=encoder_conv_in.out_channels,
-        kernel_size=encoder_conv_in.kernel_size,
-        stride=encoder_conv_in.stride,
-        padding=encoder_conv_in.padding,
-    ).to(device)
+    config["in_channels"] = 4
+    config["out_channels"] = 4
+    config["latent_channels"] = 4
+    config["vq_embed_dim"] = 4
 
-    encoder_conv_out = vqvae.encoder.conv_out
-    vqvae.encoder.conv_out = torch.nn.Conv2d(
-        in_channels=encoder_conv_out.in_channels,
-        out_channels=4,
-        kernel_size=encoder_conv_out.kernel_size,
-        stride=encoder_conv_out.stride,
-        padding=encoder_conv_out.padding,
-    ).to(device)
-
-    quant_conv = vqvae.quant_conv
-    vqvae.quant_conv = torch.nn.Conv2d(
-        in_channels=4,
-        out_channels=4,
-        kernel_size=quant_conv.kernel_size,
-        stride=quant_conv.stride,
-        padding=quant_conv.padding,
-    ).to(device)
-
-    quantize_embedding = vqvae.quantize.embedding
-    vqvae.quantize.embedding = torch.nn.Embedding(
-        num_embeddings=quantize_embedding.num_embeddings,
-        embedding_dim=4
-    ).to(device)
-
-    post_quant_conv = vqvae.post_quant_conv
-    vqvae.post_quant_conv = torch.nn.Conv2d(
-        in_channels=4,
-        out_channels=4,
-        kernel_size=post_quant_conv.kernel_size,
-        stride=post_quant_conv.stride,
-        padding=post_quant_conv.padding,
-    ).to(device)
-
-    decoder_conv_in = vqvae.decoder.conv_in
-    vqvae.decoder.conv_in = torch.nn.Conv2d(
-        in_channels=4,
-        out_channels=decoder_conv_in.out_channels,
-        kernel_size=decoder_conv_in.kernel_size,
-        stride=decoder_conv_in.stride,
-        padding=decoder_conv_in.padding,
-    ).to(device)
-
-    decoder_conv_out = vqvae.decoder.conv_out
-    vqvae.decoder.conv_out = torch.nn.Conv2d(
-        in_channels=decoder_conv_out.in_channels,
-        out_channels=4,
-        kernel_size=decoder_conv_out.kernel_size,
-        stride=decoder_conv_out.stride,
-        padding=decoder_conv_out.padding,
-    ).to(device)
+    vqvae: VQModel = VQModel \
+        .from_config(config) \
+        .to(device)
 
     return vqvae
 
 
 def get_4channel_unet(device: str, num_latents=3):
+    # TODO: make this work from config too
     unet = UNet2DModel \
             .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="unet") \
             .to(device)
