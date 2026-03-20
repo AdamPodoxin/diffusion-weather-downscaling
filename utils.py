@@ -96,13 +96,13 @@ def get_4channel_vqvae(device: str):
         kernel_size=quant_conv.kernel_size,
         stride=quant_conv.stride,
         padding=quant_conv.padding,
-    )
+    ).to(device)
 
     quantize_embedding = vqvae.quantize.embedding
     vqvae.quantize.embedding = torch.nn.Embedding(
         num_embeddings=quantize_embedding.num_embeddings,
         embedding_dim=4
-    )
+    ).to(device)
 
     post_quant_conv = vqvae.post_quant_conv
     vqvae.post_quant_conv = torch.nn.Conv2d(
@@ -111,7 +111,7 @@ def get_4channel_vqvae(device: str):
         kernel_size=post_quant_conv.kernel_size,
         stride=post_quant_conv.stride,
         padding=post_quant_conv.padding,
-    )
+    ).to(device)
 
     decoder_conv_in = vqvae.decoder.conv_in
     vqvae.decoder.conv_in = torch.nn.Conv2d(
