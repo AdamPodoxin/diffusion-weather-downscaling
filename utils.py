@@ -71,22 +71,64 @@ def get_4channel_vqvae(device: str):
                 .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
                 .to(device)
 
-    original_input_layer = vqvae.encoder.conv_in
+    encoder_conv_in = vqvae.encoder.conv_in
     vqvae.encoder.conv_in = torch.nn.Conv2d(
         in_channels=4,
-        out_channels=original_input_layer.out_channels,
-        kernel_size=original_input_layer.kernel_size,
-        stride=original_input_layer.stride,
-        padding=original_input_layer.padding,
+        out_channels=encoder_conv_in.out_channels,
+        kernel_size=encoder_conv_in.kernel_size,
+        stride=encoder_conv_in.stride,
+        padding=encoder_conv_in.padding,
     ).to(device)
 
-    original_output_layer = vqvae.decoder.conv_out
-    vqvae.decoder.conv_out = torch.nn.Conv2d(
-        in_channels=original_output_layer.in_channels,
+    encoder_conv_out = vqvae.encoder.conv_out
+    vqvae.encoder.conv_out = torch.nn.Conv2d(
+        in_channels=encoder_conv_out.in_channels,
         out_channels=4,
-        kernel_size=original_output_layer.kernel_size,
-        stride=original_output_layer.stride,
-        padding=original_output_layer.padding,
+        kernel_size=encoder_conv_out.kernel_size,
+        stride=encoder_conv_out.stride,
+        padding=encoder_conv_out.padding,
+    ).to(device)
+
+    quant_conv = vqvae.quant_conv
+    vqvae.quant_conv = torch.nn.Conv2d(
+        in_channels=4,
+        out_channels=4,
+        kernel_size=quant_conv.kernel_size,
+        stride=quant_conv.stride,
+        padding=quant_conv.padding,
+    )
+
+    quantize_embedding = vqvae.quantize.embedding
+    vqvae.quantize.embedding = torch.nn.Embedding(
+        num_embeddings=quantize_embedding.num_embeddings,
+        embedding_dim=4
+    )
+
+    post_quant_conv = vqvae.post_quant_conv
+    vqvae.post_quant_conv = torch.nn.Conv2d(
+        in_channels=4,
+        out_channels=4,
+        kernel_size=post_quant_conv.kernel_size,
+        stride=post_quant_conv.stride,
+        padding=post_quant_conv.padding,
+    )
+
+    decoder_conv_in = vqvae.decoder.conv_in
+    vqvae.decoder.conv_in = torch.nn.Conv2d(
+        in_channels=4,
+        out_channels=decoder_conv_in.out_channels,
+        kernel_size=decoder_conv_in.kernel_size,
+        stride=decoder_conv_in.stride,
+        padding=decoder_conv_in.padding,
+    ).to(device)
+
+    decoder_conv_out = vqvae.decoder.conv_out
+    vqvae.decoder.conv_out = torch.nn.Conv2d(
+        in_channels=decoder_conv_out.in_channels,
+        out_channels=4,
+        kernel_size=decoder_conv_out.kernel_size,
+        stride=decoder_conv_out.stride,
+        padding=decoder_conv_out.padding,
     ).to(device)
 
     return vqvae
