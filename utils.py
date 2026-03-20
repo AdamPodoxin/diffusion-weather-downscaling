@@ -4,6 +4,9 @@ import xarray as xr
 
 from diffusers.models import ModelMixin
 
+from diffusers.models.autoencoders.vq_model import VQModel
+from diffusers.models.unets.unet_2d import UNet2DModel
+
 import torch
 from torch.optim import Optimizer
 
@@ -61,3 +64,55 @@ def save_checkpoint(
 def load_model_state_dict(model_file_path: Path):
     model_dict = torch.load(model_file_path)
     return model_dict["model_state_dict"]
+
+
+def get_4channel_vqvae(device: str):
+    vqvae = VQModel \
+                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
+                .to(device)
+
+    original_input_layer = vqvae.encoder.conv_in
+    vqvae.encoder.conv_in = torch.nn.Conv2d(
+        in_channels=4,
+        out_channels=original_input_layer.out_channels,
+        kernel_size=original_input_layer.kernel_size,
+        stride=original_input_layer.stride,
+        padding=original_input_layer.padding,
+    ).to(device)
+
+    original_output_layer = vqvae.decoder.conv_out
+    vqvae.decoder.conv_out = torch.nn.Conv2d(
+        in_channels=original_output_layer.in_channels,
+        out_channels=4,
+        kernel_size=original_output_layer.kernel_size,
+        stride=original_output_layer.stride,
+        padding=original_output_layer.padding,
+    ).to(device)
+
+    return vqvae
+
+
+def get_4channel_unet(device: str, num_latents=3):
+    unet = UNet2DModel \
+            .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="unet") \
+            .to(device)
+    
+    original_input_layer = unet.conv_in
+    unet.conv_in = torch.nn.Conv2d(
+        in_channels=num_latents + 4,
+        out_channels=original_input_layer.out_channels,
+        kernel_size=original_input_layer.kernel_size,
+        stride=original_input_layer.stride,
+        padding=original_input_layer.padding,
+    ).to(device)
+
+    original_output_layer = unet.conv_out
+    unet.conv_out = torch.nn.Conv2d(
+        in_channels=original_output_layer.in_channels,
+        out_channels=4,
+        kernel_size=original_output_layer.kernel_size,
+        stride=original_output_layer.stride,
+        padding=original_output_layer.padding,
+    ).to(device)
+
+    return unet
