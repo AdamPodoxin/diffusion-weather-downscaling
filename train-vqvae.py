@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from diffusers.models.autoencoders.vq_model import VQModel
 from diffusers.models.autoencoders.vae import DecoderOutput
 
 import torch

@@ -1,9 +1,6 @@
 from pathlib import Path
 
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion_superresolution import LDMSuperResolutionPipeline 
-from diffusers.models.unets.unet_2d import UNet2DModel, UNet2DOutput
-
-from diffusers.models.autoencoders.vq_model import VQModel
+from diffusers.models.unets.unet_2d import UNet2DOutput
 
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 
@@ -15,10 +12,13 @@ from tqdm import tqdm
 
 import math
 
+from isotropic_fpsd_loss import isotropic_psd_loss
+
 from utils import (
     load_model_state_dict,
     generate_batches,
     normalize_across_channels,
+    denormalize_across_channels,
     save_checkpoint,
     get_4channel_unet,
     get_4channel_vqvae,
@@ -31,13 +31,24 @@ VAL_PATH = DATA_PATH / "val.zarr"
 
 MODELS_DIR = Path("models")
 VQVAE_PATH = MODELS_DIR / "vqvae-trained" / "vqvae-trained.pt"
-UNET_DIR = MODELS_DIR / "unet-finetuned"
+UNET_DIR = MODELS_DIR / "unet-trained"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 150
+BATCH_SIZE = 10
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 100
+SAVE_EVERY_EPOCH = False
+
+# TODO: figure this out
+DISTANCE_PER_PIXEL = 1.0
+
+# Physics loss is extremely large, so need
+# to keep this weight very low to prevent the 
+# loss landscape from being too jagged and 
+# causing the training to get WORSE over time. 
+# TODO: tune this when figure out DISTANCE_PER_PIXEL
+PHYSICS_LOSS_WEIGHT = 0.015
 
 
 if __name__ == "__main__":
@@ -49,6 +60,8 @@ if __name__ == "__main__":
     # Need to use the fine-tuned VQVAE for generating latents
     vqvae_state_dict = load_model_state_dict(VQVAE_PATH)
     vqvae.load_state_dict(vqvae_state_dict)
+
+    vqvae.eval()
     vqvae.requires_grad_(False)
 
     unet = get_4channel_unet(device)
@@ -63,7 +76,7 @@ if __name__ == "__main__":
     ds_val = xr.open_zarr(VAL_PATH)
     X_lr_val = ds_val["X_lr"]
     X_hr_val = ds_val["X_hr"]
-    
+
     loss_fn = torch.nn.functional.mse_loss
     optimizer = torch.optim.Adam(unet.parameters(), lr=2e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
@@ -78,7 +91,7 @@ if __name__ == "__main__":
         X_normalized, _, _ = normalize_across_channels(X)
 
         Y = Y.to(device)
-        Y_normalized, _, _ = normalize_across_channels(Y)
+        Y_normalized, Y_means, Y_stds = normalize_across_channels(Y)
 
         with torch.no_grad():
             latents = vqvae.encode(Y_normalized).latents
@@ -99,7 +112,20 @@ if __name__ == "__main__":
         predicted_noise = unet_output.sample
 
         loss = loss_fn(predicted_noise.float(), noise.float(), reduction="mean")
-        return loss
+        
+        # Deriving the clean latents which the unet thinks it got
+        alpha_prod_t = noise_scheduler.alphas_cumprod[timesteps].view(-1, 1, 1, 1)
+        beta_prod_t = 1 - alpha_prod_t
+        z0_hat = (noisy_latents - beta_prod_t ** 0.5 * predicted_noise) / (alpha_prod_t ** 0.5)
+
+        decoded_images = vqvae.decode(z0_hat).sample
+        # We denormalize with respect to high resolution images
+        # because the output is high resolution images. 
+        denormalized_decoded_images = denormalize_across_channels(decoded_images, Y_means, Y_stds)
+
+        physics_loss = isotropic_psd_loss(denormalized_decoded_images, Y, DISTANCE_PER_PIXEL)
+        
+        return loss + PHYSICS_LOSS_WEIGHT * physics_loss
 
 
     for epoch in range(NUM_EPOCHS):
@@ -143,14 +169,15 @@ if __name__ == "__main__":
         
         scheduler.step()
 
-        save_checkpoint(
-            model=unet,
-            epoch=epoch,
-            train_loss=avg_train_loss,
-            val_loss=avg_val_loss,
-            optimizer=optimizer,
-            path=UNET_DIR / f"unet-finetuned-{epoch}.pt"
-        )
+        if SAVE_EVERY_EPOCH:
+            save_checkpoint(
+                model=unet,
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                optimizer=optimizer,
+                path=UNET_DIR / f"unet-trained-{epoch}.pt"
+            )
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
@@ -163,7 +190,7 @@ if __name__ == "__main__":
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 optimizer=optimizer,
-                path=UNET_DIR / "unet-finetuned.pt"
+                path=UNET_DIR / "unet-trained.pt"
             )
     
     print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.4f}")

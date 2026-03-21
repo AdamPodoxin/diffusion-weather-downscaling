@@ -18,11 +18,17 @@ def z_normalize_tensor(tensor: torch.Tensor):
     return normalized_tensor, mean, std
 
 
+def z_denormalize_tensor(normalized_tensor: torch.Tensor, 
+                         mean: torch.Tensor, 
+                         std: torch.Tensor):
+    return normalized_tensor * std + mean
+
+
 def normalize_across_channels(X: torch.Tensor, channel_dim=1):
     num_channels = X.shape[channel_dim]
 
-    channel_means = [0 for _ in range(num_channels)]
-    channel_stds = [0 for _ in range(num_channels)]
+    channel_means = [torch.tensor(0) for _ in range(num_channels)]
+    channel_stds = [torch.tensor(0) for _ in range(num_channels)]
     
     X_normalized = torch.empty_like(X)
 
@@ -33,6 +39,26 @@ def normalize_across_channels(X: torch.Tensor, channel_dim=1):
         channel_stds[channel] = std
 
     return X_normalized, channel_means, channel_stds
+
+
+def denormalize_across_channels(X_normalized: torch.Tensor, 
+                                means: list[torch.Tensor],
+                                stds: list[torch.Tensor],
+                                channel_dim=1):
+    
+    num_channels = X_normalized.shape[channel_dim]
+
+    X = torch.empty_like(X_normalized)
+    
+    for channel in range(num_channels):
+        X[:, channel, :, :] = z_denormalize_tensor(
+                                X_normalized[:, channel, :, :], 
+                                means[channel],
+                                stds[channel]
+                                )
+    
+    return X
+
 
 
 def generate_batches(data: xr.DataArray, batch_size=32):
@@ -77,7 +103,7 @@ def get_4channel_vqvae(device: str):
     config["latent_channels"] = 4
     config["vq_embed_dim"] = 4
 
-    vqvae: VQModel = VQModel \
+    vqvae = VQModel \
         .from_config(config) \
         .to(device)
 
@@ -85,7 +111,7 @@ def get_4channel_vqvae(device: str):
 
 
 def get_4channel_unet(device: str, num_latents=3):
-    config: dict[str] = VQModel.load_config(
+    config: dict[str] = UNet2DModel.load_config(
         "CompVis/ldm-super-resolution-4x-openimages", 
         subfolder="unet"
     )
