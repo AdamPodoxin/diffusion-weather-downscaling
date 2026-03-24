@@ -16,7 +16,6 @@ from utils import (
     load_model_state_dict,
     generate_batches,
     normalize_across_channels,
-    denormalize_across_channels,
     save_checkpoint,
     get_4channel_unet,
     get_lora_unet,
@@ -24,7 +23,9 @@ from utils import (
 )
 
 
-DATA_PATH = Path("data")
+# For CSIL
+DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
+# DATA_PATH = Path("data")
 TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
@@ -36,7 +37,7 @@ UNET_DIR = MODELS_DIR / "unet-trained-vanilla"
 # number of training samples AND number of validation samples.
 BATCH_SIZE = 100
 
-NUM_EPOCHS = 100
+NUM_EPOCHS = 50
 SAVE_EVERY_EPOCH = False
 
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
         X_normalized, _, _ = normalize_across_channels(X)
 
         Y = Y.to(device)
-        Y_normalized, Y_means, Y_stds = normalize_across_channels(Y)
+        Y_normalized, _, _ = normalize_across_channels(Y)
 
         with torch.no_grad():
             latents = vqvae.encode(Y_normalized).latents
