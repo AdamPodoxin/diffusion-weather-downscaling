@@ -7,6 +7,8 @@ from diffusers.models import ModelMixin
 from diffusers.models.autoencoders.vq_model import VQModel
 from diffusers.models.unets.unet_2d import UNet2DModel
 
+from peft import LoraConfig, get_peft_model
+
 import torch
 from torch.optim import Optimizer
 
@@ -60,7 +62,6 @@ def denormalize_across_channels(X_normalized: torch.Tensor,
     return X
 
 
-
 def generate_batches(data: xr.DataArray, batch_size=32):
     for i in range(0, data.sizes["sample"], batch_size):
         batch = data.isel(sample=slice(i, i + batch_size))
@@ -110,13 +111,13 @@ def get_4channel_vqvae(device: str):
     return vqvae
 
 
-def get_4channel_unet(device: str, num_latents=3):
+def get_4channel_unet(device: str, num_latents=4):
     config: dict[str] = UNet2DModel.load_config(
         "CompVis/ldm-super-resolution-4x-openimages", 
         subfolder="unet"
     )
 
-    config["in_channels"] = 8 # 4 image channels, 4 latent channels
+    config["in_channels"] = 4 + num_latents
     config["out_channels"] = 4
 
     unet = UNet2DModel \
@@ -124,3 +125,18 @@ def get_4channel_unet(device: str, num_latents=3):
             .to(device)
     
     return unet
+
+
+def get_lora_unet(base_unet: UNet2DModel):
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=[
+            "to_q", "to_k", "to_v", "to_out.0", # Attention
+            "conv1", "conv2", "conv_shortcut"   # ResNet Convolutions
+        ],
+        lora_dropout=0.05,
+    )
+
+    lora_unet = get_peft_model(base_unet, lora_config)
+    return lora_unet
