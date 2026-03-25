@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import math
 
-def isotropic_psd_loss(pred, target, dx, eps=1e-8):
+def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, eps=1e-8):
     """
     Computes the weighted PSD loss for multichannel climate data.
     

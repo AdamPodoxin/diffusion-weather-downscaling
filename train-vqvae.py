@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from diffusers.models.autoencoders.vq_model import VQModel
 from diffusers.models.autoencoders.vae import DecoderOutput
 
 import torch
@@ -16,6 +15,7 @@ from utils import (
     generate_batches, 
     normalize_across_channels, 
     save_checkpoint,
+    get_4channel_vqvae,
 )
 
 
@@ -41,27 +41,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Running on", device)
     
-    vqvae = VQModel \
-                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="vqvae") \
-                .to(device)
-
-    original_input_layer = vqvae.encoder.conv_in
-    vqvae.encoder.conv_in = torch.nn.Conv2d(
-        in_channels=4,
-        out_channels=original_input_layer.out_channels,
-        kernel_size=original_input_layer.kernel_size,
-        stride=original_input_layer.stride,
-        padding=original_input_layer.padding,
-    ).to(device)
-    
-    original_output_layer = vqvae.decoder.conv_out
-    vqvae.decoder.conv_out = torch.nn.Conv2d(
-        in_channels=original_output_layer.in_channels,
-        out_channels=4,
-        kernel_size=original_output_layer.kernel_size,
-        stride=original_output_layer.stride,
-        padding=original_output_layer.padding,
-    ).to(device)
+    vqvae = get_4channel_vqvae(device)
 
     ds_train = xr.open_zarr(TRAIN_PATH)
     X_lr_train = ds_train["X_lr"]
@@ -69,7 +49,7 @@ if __name__ == "__main__":
     ds_val = xr.open_zarr(VAL_PATH)
     X_lr_val = ds_val["X_lr"]
 
-    loss_fn = torch.nn.functional.l1_loss
+    loss_fn = torch.nn.functional.mse_loss
     optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
 

@@ -4,6 +4,11 @@ import xarray as xr
 
 from diffusers.models import ModelMixin
 
+from diffusers.models.autoencoders.vq_model import VQModel
+from diffusers.models.unets.unet_2d import UNet2DModel
+
+from peft import LoraConfig, get_peft_model
+
 import torch
 from torch.optim import Optimizer
 
@@ -15,11 +20,17 @@ def z_normalize_tensor(tensor: torch.Tensor):
     return normalized_tensor, mean, std
 
 
+def z_denormalize_tensor(normalized_tensor: torch.Tensor, 
+                         mean: torch.Tensor, 
+                         std: torch.Tensor):
+    return normalized_tensor * std + mean
+
+
 def normalize_across_channels(X: torch.Tensor, channel_dim=1):
     num_channels = X.shape[channel_dim]
 
-    channel_means = [0 for _ in range(num_channels)]
-    channel_stds = [0 for _ in range(num_channels)]
+    channel_means = [torch.tensor(0) for _ in range(num_channels)]
+    channel_stds = [torch.tensor(0) for _ in range(num_channels)]
     
     X_normalized = torch.empty_like(X)
 
@@ -30,6 +41,25 @@ def normalize_across_channels(X: torch.Tensor, channel_dim=1):
         channel_stds[channel] = std
 
     return X_normalized, channel_means, channel_stds
+
+
+def denormalize_across_channels(X_normalized: torch.Tensor, 
+                                means: list[torch.Tensor],
+                                stds: list[torch.Tensor],
+                                channel_dim=1):
+    
+    num_channels = X_normalized.shape[channel_dim]
+
+    X = torch.empty_like(X_normalized)
+    
+    for channel in range(num_channels):
+        X[:, channel, :, :] = z_denormalize_tensor(
+                                X_normalized[:, channel, :, :], 
+                                means[channel],
+                                stds[channel]
+                                )
+    
+    return X
 
 
 def generate_batches(data: xr.DataArray, batch_size=32):
@@ -61,3 +91,52 @@ def save_checkpoint(
 def load_model_state_dict(model_file_path: Path):
     model_dict = torch.load(model_file_path)
     return model_dict["model_state_dict"]
+
+
+def get_4channel_vqvae(device: str):
+    config: dict[str] = VQModel.load_config(
+        "CompVis/ldm-super-resolution-4x-openimages", 
+        subfolder="vqvae"
+    )
+
+    config["in_channels"] = 4
+    config["out_channels"] = 4
+    config["latent_channels"] = 4
+    config["vq_embed_dim"] = 4
+
+    vqvae = VQModel \
+        .from_config(config) \
+        .to(device)
+
+    return vqvae
+
+
+def get_4channel_unet(device: str, num_latents=4):
+    config: dict[str] = UNet2DModel.load_config(
+        "CompVis/ldm-super-resolution-4x-openimages", 
+        subfolder="unet"
+    )
+
+    config["in_channels"] = 4 + num_latents
+    config["out_channels"] = 4
+
+    unet = UNet2DModel \
+            .from_config(config) \
+            .to(device)
+    
+    return unet
+
+
+def get_lora_unet(base_unet: UNet2DModel):
+    lora_config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=[
+            "to_q", "to_k", "to_v", "to_out.0", # Attention
+            "conv1", "conv2", "conv_shortcut"   # ResNet Convolutions
+        ],
+        lora_dropout=0.05,
+    )
+
+    lora_unet = get_peft_model(base_unet, lora_config)
+    return lora_unet
