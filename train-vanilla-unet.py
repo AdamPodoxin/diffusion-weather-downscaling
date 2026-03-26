@@ -15,7 +15,7 @@ import math
 from utils import (
     load_model_state_dict,
     generate_batches,
-    normalize_across_channels,
+    # normalize_across_channels,
     save_checkpoint,
     get_4channel_unet,
     get_lora_unet,
@@ -37,7 +37,7 @@ UNET_DIR = MODELS_DIR / "unet-trained-vanilla"
 # number of training samples AND number of validation samples.
 BATCH_SIZE = 100
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 20
 SAVE_EVERY_EPOCH = False
 
 
@@ -142,6 +142,8 @@ if __name__ == "__main__":
             for V_lr, V_hr in tqdm(zip(lr_val_batch_generator, hr_val_batch_generator), total=num_val_batches):
                 loss_val = loop_logic(V_lr, V_hr)
                 avg_val_loss += loss_val.item()
+
+        avg_val_loss /= num_val_batches
 
         print(f"Average training loss: {avg_train_loss:.4f}")
         print(f"Average validation loss: {avg_val_loss:.4f}")
