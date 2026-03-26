@@ -69,9 +69,11 @@ class WeatherLDMSuperResolutionPipeline():
     def process(self, data: xr.DataArray):
         batch_generator = generate_batches(data, self.batch_size)
 
-        Y = torch.cat([
-            self._process_batch(X)
-            for X in batch_generator
-        ], dim=0)
+        def loop():
+            for X in batch_generator:
+                yield self._process_batch(X)
+                torch.cuda.empty_cache()
+
+        Y = torch.cat(list(loop()), dim=0)
 
         return Y
