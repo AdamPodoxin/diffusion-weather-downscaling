@@ -16,7 +16,8 @@ from torch.optim import Optimizer
 def generate_batches(data: xr.DataArray, batch_size=32):
     for i in range(0, data.sizes["sample"], batch_size):
         batch = data.isel(sample=slice(i, i + batch_size))
-        yield batch
+        batch_tensor = torch.from_numpy(batch.values)
+        yield batch_tensor
 
 
 def save_checkpoint(

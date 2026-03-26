@@ -30,7 +30,7 @@ LOSSES_DIR = VQVAE_DIR / "losses"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 16
+BATCH_SIZE = 20
 
 NUM_EPOCHS = 20
 
@@ -50,13 +50,33 @@ if __name__ == "__main__":
 
     ds_train = xr.open_zarr(TRAIN_PATH)
     X_hr_train = ds_train["X_hr"]
-    train_means = X_hr_train.mean(dim=reduce_dims)
-    train_stds = X_hr_train.std(dim=reduce_dims)
+
+    # Calculate mean and std per channel for normalization
+    print("Calculating dataset means and stds")
+    with torch.no_grad():
+        # Not completely ideal because loading entire dataset into VRAM,
+        # but it should fit for our data so it's fine for now. 
+        temp_train_tensor = torch.from_numpy(X_hr_train.to_numpy()).to(device)
+        height = temp_train_tensor.shape[2]
+        width = temp_train_tensor.shape[3]
+        
+        # Calculate per each channel (dim 1), and
+        # expand to size of batch tensor. 
+        means = temp_train_tensor \
+                .mean(dim=(0, 2, 3)) \
+                .view(1, 4, 1, 1) \
+                .expand(BATCH_SIZE, 4, height, width)
+        
+        stds = temp_train_tensor \
+                .std(dim=(0, 2, 3)) \
+                .view(1, 4, 1, 1) \
+                .expand(BATCH_SIZE, 4, height, width)
+
+    del temp_train_tensor
+    torch.cuda.empty_cache()
 
     ds_val = xr.open_zarr(VAL_PATH)
     X_hr_val = ds_val["X_hr"]
-    val_means = X_hr_val.mean(dim=reduce_dims)
-    val_stds = X_hr_val.std(dim=reduce_dims)
 
     loss_fn = torch.nn.functional.mse_loss
     optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
@@ -67,21 +87,22 @@ if __name__ == "__main__":
     best_val_loss = math.inf
     best_epoch = 0
 
-    def loop_logic(X: xr.DataArray, means: xr.DataArray, stds: xr.DataArray):
+    def loop_logic(X: torch.Tensor):
+        X = X.to(device)
         X_normalized = (X - means) / stds
-        X_tensor = torch.from_numpy(X_normalized.values).to(device)
 
-        # Output is already normalized 
-        output: DecoderOutput = vqvae(X_tensor)
+        output: DecoderOutput = vqvae(X_normalized)
         output_sample = output.sample
 
-        loss = loss_fn(output_sample, X_tensor)
+        # Output is already normalized, so don't need to re-normalize
+        loss = loss_fn(output_sample, X_normalized)
         return loss
 
 
     train_losses = [math.inf for _ in range(NUM_EPOCHS)]
     val_losses = [math.inf for _ in range(NUM_EPOCHS)]
 
+    print("Starting training")
     for epoch in range(NUM_EPOCHS):
         vqvae.train()
         print("\nEpoch", epoch)
@@ -92,7 +113,7 @@ if __name__ == "__main__":
         
         print("Training:")
         for X in tqdm(batch_generator, total=num_batches):
-            loss = loop_logic(X, train_means, train_stds)
+            loss = loop_logic(X)
             avg_train_loss += loss.item()
 
             loss.backward()
@@ -112,7 +133,7 @@ if __name__ == "__main__":
             
             print("Validation:")
             for V in tqdm(val_batch_generator, total=num_val_batches):
-                loss_val = loop_logic(V, val_means, val_stds)
+                loss_val = loop_logic(V)
                 avg_val_loss += loss_val.item()
 
         avg_val_loss /= num_val_batches
