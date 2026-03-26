@@ -157,10 +157,11 @@ if __name__ == "__main__":
             )
         
         loss_df = pd.DataFrame({
-            "train loss": avg_train_loss, 
-            "validation loss": avg_val_loss
+            "epoch": [epoch],
+            "train loss": [avg_train_loss], 
+            "validation loss": [avg_val_loss]
         })
-        loss_df.to_csv(LOSSES_DIR / f"epoch-{epoch:03}.csv")
+        loss_df.to_csv(LOSSES_DIR / f"epoch-{epoch:03}.csv", index=False)
 
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
