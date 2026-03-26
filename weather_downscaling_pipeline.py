@@ -11,8 +11,8 @@ from utils import (
     get_4channel_vqvae,
     get_4channel_unet,
     get_lora_unet,
-    normalize_across_channels, 
-    denormalize_across_channels,
+    # normalize_across_channels, 
+    # denormalize_across_channels,
     generate_batches,
 )
 
@@ -49,7 +49,7 @@ class WeatherLDMSuperResolutionPipeline():
     
 
     def _process_batch(self, X: torch.Tensor):
-        X_normalized, X_means, X_stds = normalize_across_channels(X)
+        # X_normalized, X_means, X_stds = normalize_across_channels(X)
 
         Y_normalized = self.ldm_pipeline(
                             image=X_normalized, 
@@ -61,7 +61,7 @@ class WeatherLDMSuperResolutionPipeline():
                             .permute(0, 3, 1, 2) \
                             .to(self.device)
         
-        Y = denormalize_across_channels(Y_normalized_tensor, X_means, X_stds)
+        # Y = denormalize_across_channels(Y_normalized_tensor, X_means, X_stds)
 
         return Y
     
