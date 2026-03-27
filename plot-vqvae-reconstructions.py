@@ -36,3 +36,5 @@ with torch.no_grad():
         axs[1, channel].imshow(torchvision.utils.make_grid(output.cpu())[channel], cmap='Greys')
 
 fig.savefig("vqvae-reconstructions.png")
+
+print(torch.nn.functional.mse_loss(sample_norm_tensor, output))
