@@ -91,11 +91,13 @@ if __name__ == "__main__":
         X = X.to(device)
         X_normalized = (X - means) / stds
 
+        # Output sample is already normalized, so don't need to re-normalize
         output: DecoderOutput = vqvae(X_normalized)
         output_sample = output.sample
+        commit_loss = output.commit_loss
 
-        # Output is already normalized, so don't need to re-normalize
-        loss = loss_fn(output_sample, X_normalized)
+        recon_loss = loss_fn(output_sample, X_normalized)
+        loss = recon_loss + commit_loss
         return loss
 
 
