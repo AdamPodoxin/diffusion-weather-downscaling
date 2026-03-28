@@ -31,7 +31,7 @@ LOSSES_DIR = VQVAE_DIR / "losses"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 5
+BATCH_SIZE = 20
 
 NUM_EPOCHS = 20
 
