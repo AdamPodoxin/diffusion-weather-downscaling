@@ -104,8 +104,12 @@ if __name__ == "__main__":
 
     num_batches = X_hr_train.sizes["sample"] // BATCH_SIZE
 
-    best_val_loss = math.inf
-    best_epoch = 0
+    if continue_from_checkpoint:
+        best_val_loss: float = checkpoint["val_loss"]
+        best_epoch: int = epoch
+    else:
+        best_val_loss = math.inf
+        best_epoch = 0
 
     def loop_logic(X: torch.Tensor):
         X = X.to(device)
@@ -123,6 +127,13 @@ if __name__ == "__main__":
 
     train_losses = [math.inf for _ in range(NUM_EPOCHS)]
     val_losses = [math.inf for _ in range(NUM_EPOCHS)]
+
+    if continue_from_checkpoint:
+        # Load losses from files
+        for e in range(epoch):
+            loss_df = pd.read_csv(LOSSES_DIR / f"epoch-{e:03}.csv")
+            train_losses[e] = loss_df["train loss"].iloc[0]
+            val_losses[e] = loss_df["validation loss"].iloc[0]
 
     print("Starting training")
     for epoch in range(epoch, NUM_EPOCHS):
