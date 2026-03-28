@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 from diffusers.models.autoencoders.vae import DecoderOutput
@@ -30,7 +31,7 @@ LOSSES_DIR = VQVAE_DIR / "losses"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 20
+BATCH_SIZE = 5
 
 NUM_EPOCHS = 20
 
@@ -38,6 +39,20 @@ SAVE_EVERY_EPOCH = False
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--continue-checkpoint", action="store_true", help="Continue from last checkpoint")
+
+    args = parser.parse_args()
+
+    continue_from_checkpoint: bool = args.continue_checkpoint
+
+    if continue_from_checkpoint:
+        checkpoint: dict = torch.load(VQVAE_DIR / "vqvae-trained.pt")
+        epoch: int = checkpoint["epoch"]
+        print("Continuing from epoch", epoch)
+    else:
+        epoch = 0
+
     VQVAE_DIR.mkdir(exist_ok=True)
     LOSSES_DIR.mkdir(exist_ok=True)
 
@@ -80,7 +95,12 @@ if __name__ == "__main__":
 
     loss_fn = torch.nn.functional.mse_loss
     optimizer = torch.optim.Adam(vqvae.parameters(), lr=2e-4)
-    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS)
+
+    if continue_from_checkpoint:
+        vqvae.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        
+    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, last_epoch=epoch)
 
     num_batches = X_hr_train.sizes["sample"] // BATCH_SIZE
 
@@ -105,7 +125,7 @@ if __name__ == "__main__":
     val_losses = [math.inf for _ in range(NUM_EPOCHS)]
 
     print("Starting training")
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(epoch, NUM_EPOCHS):
         vqvae.train()
         print("\nEpoch", epoch)
 
