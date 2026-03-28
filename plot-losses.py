@@ -1,6 +1,7 @@
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import seaborn as sns
 
 
@@ -17,5 +18,7 @@ if __name__ == "__main__":
     fig = sns.lineplot(data=df)
     fig.set_title(f"Losses for {model_name} model training")
     plt.axvline(best_val_loss_index, 0, 1, linestyle="--", color="green")
+
+    fig.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
     
     plt.savefig(output_file, bbox_inches="tight")
