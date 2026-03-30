@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import math
 
-def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, eps=1e-8):
+def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, num_patches_per_side = 32, eps=1e-8):
     """
     Computes the weighted PSD loss for multichannel climate data.
     
@@ -13,37 +13,67 @@ def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, eps=1e-8):
     """
     B, C, H, W = pred.shape
     device = pred.device
+    # For now, we will just use a fixed patch size and stride
 
-    #wavenumbers
-    kh = torch.linspace(0, H - 1, H, device=device)
-    kw = torch.linspace(0, W - 1, W, device=device)
-    grid_h, grid_w = torch.meshgrid(kh, kw, indexing='ij')
+    patch_size =  min(H, W) // num_patches_per_side
+
+
+    stride = patch_size // 2 
+    print(stride)
+    print(H, W)
+    print(patch_size)
+
+    # Get overlapping patches. Resulting shape: [B, C, num_patches_h, num_patches_w, patch_size, patch_size]
+    patches_p = pred.unfold(2, patch_size, stride).unfold(3, patch_size, stride)
+    patches_t = target.unfold(2, patch_size, stride).unfold(3, patch_size, stride)  
+
+    print(patches_p.shape)
+    print(patches_t.shape)
+
+
+    # Mix batches and patches into a single dimension. Resulting shape: [B * num_patches_h * num_patches_w, C, patch_size, patch_size]
+    patches_p = patches_p.contiguous().view(-1, C, patch_size, patch_size)
+    patches_t = patches_t.contiguous().view(-1, C, patch_size, patch_size)
+
+    #Hann windows
+    win1d = torch.hann_window(patch_size, device=device)
+    win2d = torch.outer(win1d, win1d).unsqueeze(0).unsqueeze(0)
+
+    # Apply HANN windows to each patch. 
+    patches_p = patches_p * win2d
+    patches_t = patches_t * win2d
+
+    def get_psd(patches):
+        f_coeff = torch.fft.fft2(patches)
+        # Normalize by the patch area, not the global H * W
+        return torch.abs(f_coeff)**2 / (patch_size * patch_size * dx)
+
+    psd_pred = get_psd(patches_p)
+    psd_target = get_psd(patches_t)
+
+    # Compute Isotropic Weights based on local patch frequencies
+    freq = torch.fft.fftfreq(patch_size, device=device)
+    grid_h, grid_w = torch.meshgrid(freq, freq, indexing='ij')
     
     k = torch.sqrt(grid_h**2 + grid_w**2)
-    k_max = torch.sqrt(torch.tensor((H - 1)**2 + (W - 1)**2, device=device))
-
+    k_max = k.max() # Max frequency in the patch
+    
+    # Higher weights toward higher frequencies 
     weights = (k / k_max)**2 
+    weights = weights.unsqueeze(0).unsqueeze(0)
 
-    # The paper uses the squared magnitude of fourier
-    def get_psd(img):
-        f_coeff = torch.fft.fft2(img)
-
-        return torch.abs(f_coeff)**2 / (H * W * dx)
-
-    psd_pred = get_psd(pred)
-    psd_target = get_psd(target)
     log_p_pred = torch.log(psd_pred + eps)
     log_p_target = torch.log(psd_target + eps)
-    
+
     diff = (log_p_pred - log_p_target)**2
-    
-    weighted_diff = diff * weights.unsqueeze(0).unsqueeze(0)
+    weighted_diff = diff * weights # Apply isotropic weights to the squared log differences
 
     return torch.sqrt(torch.mean(weighted_diff))
 
 
 
 
+# Redundant function for sampling Cartesian patches from lat/lon images. We can use this to preprocess the data before feeding it into the loss function, ensuring that the input to the loss is already in a Cartesian grid format.
 def sample_cartesian_patch(img_latlon, center_lat, center_lon, patch_size, dx_km):
     """
     Resamples a lat/lon image to a Cartesian grid with equal spatial resolution.
