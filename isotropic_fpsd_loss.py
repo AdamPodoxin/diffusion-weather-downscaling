@@ -19,16 +19,16 @@ def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, num_patches
 
 
     stride = patch_size // 2 
-    print(stride)
-    print(H, W)
-    print(patch_size)
+    # print(stride)
+    # print(H, W)
+    # print(patch_size)
 
     # Get overlapping patches. Resulting shape: [B, C, num_patches_h, num_patches_w, patch_size, patch_size]
     patches_p = pred.unfold(2, patch_size, stride).unfold(3, patch_size, stride)
     patches_t = target.unfold(2, patch_size, stride).unfold(3, patch_size, stride)  
 
-    print(patches_p.shape)
-    print(patches_t.shape)
+    # print(patches_p.shape)
+    # print(patches_t.shape)
 
 
     # Mix batches and patches into a single dimension. Resulting shape: [B * num_patches_h * num_patches_w, C, patch_size, patch_size]
