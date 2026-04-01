@@ -2,7 +2,7 @@ from pathlib import Path
 
 from diffusers.models.unets.unet_2d import UNet2DOutput
 
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -24,8 +24,8 @@ from utils import (
 
 
 # For CSIL
-# DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
-DATA_PATH = Path("data")
+DATA_PATH = Path("/usr/shared/CMPT/scratch/alp11/data/cmpt420/project")
+# DATA_PATH = Path("data")
 TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
@@ -36,7 +36,7 @@ LOSSES_DIR = UNET_DIR / "losses"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
 # number of training samples AND number of validation samples.
-BATCH_SIZE = 50
+BATCH_SIZE = 100
 
 NUM_EPOCHS = 10
 SAVE_EVERY_EPOCH = False
@@ -60,8 +60,11 @@ if __name__ == "__main__":
 
     unet = get_lora_unet(get_4channel_unet(device))
 
-    noise_scheduler = DDPMScheduler \
-                .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="scheduler")
+    noise_scheduler = DDIMScheduler \
+                        .from_pretrained(
+                            "CompVis/ldm-super-resolution-4x-openimages", 
+                            subfolder="scheduler"
+                        )
 
     ds_train = xr.open_zarr(TRAIN_PATH)
     X_lr_train = ds_train["X_lr"]
@@ -87,6 +90,9 @@ if __name__ == "__main__":
                 .std(dim=(0, 2, 3)) \
                 .view(1, 4, 1, 1) \
                 .expand(BATCH_SIZE, 4, height, width)
+
+    del temp_train_tensor
+    torch.cuda.empty_cache()
 
     # Calculate mean and std per channel for normalization
     print("Calculating HR means and stds")
