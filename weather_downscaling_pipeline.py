@@ -1,18 +1,20 @@
 from pathlib import Path
 
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion_superresolution import LDMSuperResolutionPipeline
+from diffusers.models.unets.unet_2d import UNet2DOutput
 from diffusers.schedulers.scheduling_ddim import DDIMScheduler
+from diffusers.utils.torch_utils import randn_tensor
 
 import torch
 import xarray as xr
+
+from tqdm import tqdm
 
 from utils import (
     load_model_state_dict,
     get_4channel_vqvae,
     get_4channel_unet,
     get_lora_unet,
-    # normalize_across_channels, 
-    # denormalize_across_channels,
     generate_batches,
 )
 
@@ -22,7 +24,7 @@ class WeatherLDMSuperResolutionPipeline():
             self, 
             vqvae_path: Path | str="models/vqvae-trained/vqvae-trained.pt", 
             unet_path: Path | str="models/unet-trained-vanilla/unet-trained-vanilla.pt",
-            batch_size=100
+            batch_size=100,
         ):
         
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -39,34 +41,81 @@ class WeatherLDMSuperResolutionPipeline():
         self.scheduler = DDIMScheduler \
                         .from_pretrained("CompVis/ldm-super-resolution-4x-openimages", subfolder="scheduler")
 
-        self.ldm_pipeline = LDMSuperResolutionPipeline(
-                                vqvae=self.vqvae, 
-                                unet=self.unet, 
-                                scheduler=self.scheduler
-                            )
         
         self.batch_size = batch_size
-    
 
-    def _process_batch(self, X: torch.Tensor):
-        # X_normalized, X_means, X_stds = normalize_across_channels(X)
 
-        Y_normalized = self.ldm_pipeline(
-                            image=X_normalized, 
-                            batch_size=100,
-                            output_type="np.array"
-                        ).images
-        
-        Y_normalized_tensor = torch.from_numpy(Y_normalized) \
-                            .permute(0, 3, 1, 2) \
-                            .to(self.device)
-        
-        # Y = denormalize_across_channels(Y_normalized_tensor, X_means, X_stds)
+    def _process_batch(self, X: torch.Tensor, num_inference_steps=100):
+        """Returns denormalized output as well as raw output (normalized)"""
 
-        return Y
-    
+        # Code derived from LDMSuperResolutionPipeline
 
-    def process(self, data: xr.DataArray):
+        self.vqvae.eval()
+        self.unet.eval()
+
+        with torch.no_grad():
+            height = X.shape[2]
+            width = X.shape[3]
+
+            X = X.to(self.device)
+
+            means_base = X \
+                .mean(dim=(0, 2, 3)) \
+                .view(1, 4, 1, 1)
+            means_lr = means_base.expand(self.batch_size, 4, height, width)
+            means_hr = means_base.expand(self.batch_size, 4, height * 4, width * 4)
+
+            stds_base = X \
+                .std(dim=(0, 2, 3)) \
+                .view(1, 4, 1, 1)
+            stds_lr = stds_base.expand(self.batch_size, 4, height, width)
+            stds_hr = stds_base.expand(self.batch_size, 4, height * 4, width * 4)
+            
+            X_normalized = (X - means_lr) / stds_lr
+
+            latents_shape = (self.batch_size, 4, height, width)
+            latents_dtype = next(self.unet.parameters()).dtype
+
+            initial_latents = randn_tensor(
+                shape=latents_shape,
+                dtype=latents_dtype,
+                device=self.device,
+            ) * self.scheduler.init_noise_sigma
+
+            self.scheduler.set_timesteps(num_inference_steps)
+            timesteps_tensor = self.scheduler.timesteps
+
+            latents = initial_latents
+
+            for t in tqdm(timesteps_tensor):
+                latents_input = self.scheduler.scale_model_input(
+                    sample=torch.cat([latents, X_normalized], dim=1),
+                    timestep=t,
+                )
+
+                unet_output: UNet2DOutput = self.unet(latents_input, t)
+                noise_predicted = unet_output.sample
+
+                latents = self.scheduler.step(
+                    model_output=noise_predicted, 
+                    timestep=t, 
+                    sample=latents,
+                ).prev_sample
+
+                torch.cuda.empty_cache()
+            
+            Y = self.vqvae.decode(latents).sample
+            Y_denormalized = Y * stds_hr + means_hr
+
+            del latents
+            del latents_input
+            del noise_predicted
+            torch.cuda.empty_cache()
+
+        return Y_denormalized, Y
+
+
+    def __call__(self, data: xr.DataArray):
         batch_generator = generate_batches(data, self.batch_size)
 
         def loop():
@@ -74,6 +123,9 @@ class WeatherLDMSuperResolutionPipeline():
                 yield self._process_batch(X)
                 torch.cuda.empty_cache()
 
-        Y = torch.cat(list(loop()), dim=0)
+        Ys_denormalized, Ys = zip(*list(loop()))
 
-        return Y
+        Y_denormalized = torch.cat(list(Ys_denormalized), dim=0)
+        Y = torch.cat(list(Ys), dim=0)
+
+        return Y_denormalized, Y
