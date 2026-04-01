@@ -45,7 +45,11 @@ class WeatherLDMSuperResolutionPipeline():
         self.batch_size = batch_size
 
 
-    def _process_batch(self, X: torch.Tensor, num_inference_steps=100):
+    def _process_batch(self, 
+                        X: torch.Tensor, 
+                        means_base: torch.Tensor,
+                        stds_base: torch.Tensor,
+                        num_inference_steps=100):
         """Returns denormalized output as well as raw output (normalized)"""
 
         # Code derived from LDMSuperResolutionPipeline
@@ -59,9 +63,6 @@ class WeatherLDMSuperResolutionPipeline():
 
             X = X.to(self.device)
 
-            means_base = X \
-                .mean(dim=(0, 2, 3)) \
-                .view(1, 4, 1, 1)
             means_lr = means_base.expand(self.batch_size, 4, height, width)
             means_hr = means_base.expand(self.batch_size, 4, height * 4, width * 4)
 
@@ -118,9 +119,28 @@ class WeatherLDMSuperResolutionPipeline():
     def __call__(self, data: xr.DataArray, num_inference_steps=100):
         batch_generator = generate_batches(data, self.batch_size)
 
+        with torch.no_grad():
+            temp_tensor = torch.from_numpy(data.values).to(self.device)
+
+            means_base = temp_tensor \
+                    .mean(dim=(0, 2, 3)) \
+                    .view(1, 4, 1, 1) 
+
+            stds_base = temp_tensor \
+                    .std(dim=(0, 2, 3)) \
+                    .view(1, 4, 1, 1) 
+        
+        del temp_tensor
+        torch.cuda.empty_cache()
+
         def loop():
             for X in batch_generator:
-                yield self._process_batch(X, num_inference_steps)
+                yield self._process_batch(
+                    X=X,
+                    means_base=means_base,
+                    stds_base=stds_base,
+                    num_inference_steps=num_inference_steps,
+                )
                 torch.cuda.empty_cache()
 
         Ys_denormalized, Ys = zip(*list(loop()))
