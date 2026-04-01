@@ -115,12 +115,12 @@ class WeatherLDMSuperResolutionPipeline():
         return Y_denormalized, Y
 
 
-    def __call__(self, data: xr.DataArray):
+    def __call__(self, data: xr.DataArray, num_inference_steps=100):
         batch_generator = generate_batches(data, self.batch_size)
 
         def loop():
             for X in batch_generator:
-                yield self._process_batch(X)
+                yield self._process_batch(X, num_inference_steps)
                 torch.cuda.empty_cache()
 
         Ys_denormalized, Ys = zip(*list(loop()))
