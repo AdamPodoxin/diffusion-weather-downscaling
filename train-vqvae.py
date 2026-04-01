@@ -49,9 +49,11 @@ if __name__ == "__main__":
     if continue_from_checkpoint:
         checkpoint: dict = torch.load(VQVAE_DIR / "vqvae-trained.pt")
         epoch: int = checkpoint["epoch"]
+        last_epoch = epoch
         print("Continuing from epoch", epoch)
     else:
         epoch = 0
+        last_epoch = -1
 
     VQVAE_DIR.mkdir(exist_ok=True)
     LOSSES_DIR.mkdir(exist_ok=True)
@@ -100,7 +102,7 @@ if __name__ == "__main__":
         vqvae.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         
-    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, last_epoch=epoch)
+    scheduler = CosineAnnealingLR(optimizer, T_max=NUM_EPOCHS, last_epoch=last_epoch)
 
     num_batches = X_hr_train.sizes["sample"] // BATCH_SIZE
 
