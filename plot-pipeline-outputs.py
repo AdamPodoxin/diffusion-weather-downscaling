@@ -12,7 +12,7 @@ TEST_PATH = DATA_PATH / "test.zarr"
 
 SAMPLE_INDEX = 0
 
-NUM_INFERENCE_STEPS = 500
+NUM_INFERENCE_STEPS = 100
 
 
 if __name__ == "__main__":

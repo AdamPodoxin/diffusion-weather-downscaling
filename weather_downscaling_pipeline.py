@@ -6,6 +6,8 @@ from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 from diffusers.utils.torch_utils import randn_tensor
 
 import torch
+from torch.nn.functional import interpolate
+
 import xarray as xr
 
 from tqdm import tqdm
@@ -77,11 +79,14 @@ class WeatherLDMSuperResolutionPipeline():
             latents_shape = (self.batch_size, 4, height, width)
             latents_dtype = next(self.unet.parameters()).dtype
 
-            initial_latents = randn_tensor(
-                shape=latents_shape,
-                dtype=latents_dtype,
-                device=self.device,
-            ) * self.scheduler.init_noise_sigma
+            # noise = randn_tensor(
+            #     shape=latents_shape,
+            #     dtype=latents_dtype,
+            #     device=self.device,
+            # ) * self.scheduler.init_noise_sigma
+
+            interpolated_input = interpolate(X_normalized, scale_factor=4)
+            initial_latents = self.vqvae.encode(interpolated_input).latents * self.scheduler.init_noise_sigma
 
             self.scheduler.set_timesteps(num_inference_steps)
             timesteps_tensor = self.scheduler.timesteps
