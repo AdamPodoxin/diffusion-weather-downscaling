@@ -30,7 +30,7 @@ TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
 MODELS_DIR = Path("models")
-VQVAE_PATH = MODELS_DIR / "vqvae-trained" / "vqvae-trained.pt"
+VQVAE_PATH = MODELS_DIR / "vqvae-trained-vanilla" / "vqvae-trained-vanilla.pt"
 UNET_DIR = MODELS_DIR / "unet-trained-vanilla"
 LOSSES_DIR = UNET_DIR / "losses"
 

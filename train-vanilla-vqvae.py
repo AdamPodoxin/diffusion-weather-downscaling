@@ -26,7 +26,7 @@ TRAIN_PATH = DATA_PATH / "train.zarr"
 VAL_PATH = DATA_PATH / "val.zarr"
 
 MODELS_DIR = Path("models")
-VQVAE_DIR = MODELS_DIR / "vqvae-trained"
+VQVAE_DIR = MODELS_DIR / "vqvae-trained-vanilla"
 LOSSES_DIR = VQVAE_DIR / "losses"
 
 # Set to whatever GPU VRAM can handle, but must be factor of 
@@ -209,7 +209,7 @@ if __name__ == "__main__":
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 optimizer=optimizer,
-                path=VQVAE_DIR / "vqvae-trained.pt"
+                path=VQVAE_DIR / "vqvae-trained-vanilla.pt"
             )
     
     print("Epoch", best_epoch, f"had lowest validation loss {best_val_loss:.4f}")
