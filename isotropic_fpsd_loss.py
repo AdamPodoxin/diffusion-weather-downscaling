@@ -32,8 +32,8 @@ def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, num_patches
 
 
     # Mix batches and patches into a single dimension. Resulting shape: [B * num_patches_h * num_patches_w, C, patch_size, patch_size]
-    patches_p = patches_p.contiguous().view(-1, C, patch_size, patch_size)
-    patches_t = patches_t.contiguous().view(-1, C, patch_size, patch_size)
+    patches_p = patches_p.permute(0, 2, 3, 1, 4, 5).contiguous().view(-1, C, patch_size, patch_size)
+    patches_t = patches_t.permute(0, 2, 3, 1, 4, 5).contiguous().view(-1, C, patch_size, patch_size)
 
     #Hann windows
     win1d = torch.hann_window(patch_size, device=device)
@@ -43,11 +43,16 @@ def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, num_patches
     patches_p = patches_p * win2d
     patches_t = patches_t * win2d
 
+    # Handle varying dx across each instances in batch
+    if isinstance(dx, torch.Tensor) and dx.numel() == B:    
+        num_patches_total = patches_p.shape[0] // B
+        dx_expanded = dx.repeat_interleave(num_patches_total).view(-1, 1, 1, 1) # Expand to match the number of patches and channels
+    else:
+        dx_expanded = dx
+
     def get_psd(patches):
         f_coeff = torch.fft.fft2(patches)
-        # Normalize by the patch area, not the global H * W
-        return torch.abs(f_coeff)**2 / (patch_size * patch_size * dx)
-
+        return (torch.abs(f_coeff)**2) * (dx_expanded**2) / (patch_size * patch_size) # multiply by dx^2 to convert to physical units, and normalize by patch area
     psd_pred = get_psd(patches_p)
     psd_target = get_psd(patches_t)
 
@@ -73,44 +78,26 @@ def isotropic_psd_loss(pred: torch.Tensor, target: torch.Tensor, dx, num_patches
 
 
 
-# Redundant function for sampling Cartesian patches from lat/lon images. We can use this to preprocess the data before feeding it into the loss function, ensuring that the input to the loss is already in a Cartesian grid format.
-def sample_cartesian_patch(img_latlon, center_lat, center_lon, patch_size, dx_km):
+
+def calculate_batch_dx(center_latitudes_deg: torch.Tensor) -> torch.Tensor:
     """
-    Resamples a lat/lon image to a Cartesian grid with equal spatial resolution.
+    Calculates the effective dx (in km) for a batch of 128x128 images 
+    each 32x32 degrees, based on their center latitudes.
     
     Args:
-        img_latlon: Tensor of shape (B, C, H_lat, W_lon) - assumes global coverage
-                    Latitudes from 90 to -90 (top to bottom)
-                    Longitudes from -180 to 180 (left to right)
-        center_lat, center_lon: Center of the patch in degrees
-        patch_size: Tuple (H_patch, W_patch) in pixels
-        dx_km: Spatial resolution per pixel in km
+        center_latitudes_deg: Tensor of shape (B,) containing center latitudes in degrees.
+        
+    Returns:
+        dx_effective: Tensor of shape (B,) containing the effective resolution per pixel in km.
     """
-    B, C, H, W = img_latlon.shape
-    device = img_latlon.device
-    R_earth = 6371.0 # Radius of Earth in km
-
-    H_patch, W_patch = patch_size
-    y = torch.arange(-H_patch//2, H_patch//2, device=device) * dx_km
-    x = torch.arange(-W_patch//2, W_patch//2, device=device) * dx_km
-    grid_y, grid_x = torch.meshgrid(y, x, indexing='ij')
+    R_earth = 6371.0  
+    degrees_per_image = 32.0 # TO change if necessary 
+    pixels_per_image = 128.0
     
-    # Using a simplified equirectangular approximation
-    lat_offset = (grid_y / R_earth) * (180.0 / math.pi)
+    lat_rad = torch.deg2rad(center_latitudes_deg)
+    dx_lat = (degrees_per_image / pixels_per_image) * (math.pi / 180.0) * R_earth 
     
-    cos_lat = math.cos(center_lat * math.pi / 180.0)
-    lon_offset = (grid_x / (R_earth * cos_lat)) * (180.0 / math.pi)
-    target_lat = center_lat - lat_offset # Minus because image Y goes down
-    target_lon = center_lon + lon_offset
-
-    # Lat: 90 to -90 maps to -1 to 1
-    norm_y = -(target_lat / 90.0) 
-    # Lon: -180 to 180 maps to -1 to 1
-    norm_x = target_lon / 180.0
+     # The effective dx in the longitudinal direction is reduced by the cosine of the latitude
+    dx_effective = dx_lat * torch.sqrt(torch.abs(torch.cos(lat_rad)))
     
-    # Resulting shape (B, H_patch, W_patch, 2)
-    grid = torch.stack((norm_x, norm_y), dim=-1)
-    grid = grid.unsqueeze(0).expand(B, -1, -1, -1)
-    patch_cartesian = F.grid_sample(img_latlon, grid, mode='bilinear', padding_mode='border', align_corners=True)
-    
-    return patch_cartesian
+    return dx_effective
