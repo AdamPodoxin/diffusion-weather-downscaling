@@ -24,7 +24,7 @@ from utils import (
 class WeatherLDMSuperResolutionPipeline():
     def __init__(
             self, 
-            vqvae_path: Path | str="models/vqvae-trained/vqvae-trained.pt", 
+            vqvae_path: Path | str="models/vqvae-trained-vanilla/vqvae-trained-vanilla.pt", 
             unet_path: Path | str="models/unet-trained-vanilla/unet-trained-vanilla.pt",
             batch_size=100,
         ):
