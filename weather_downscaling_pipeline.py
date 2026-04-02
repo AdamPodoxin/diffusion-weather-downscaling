@@ -84,6 +84,7 @@ class WeatherLDMSuperResolutionPipeline():
             #     dtype=latents_dtype,
             #     device=self.device,
             # ) * self.scheduler.init_noise_sigma
+            # initial_latents = noise
 
             interpolated_input = interpolate(X_normalized, scale_factor=4)
             initial_latents = self.vqvae.encode(interpolated_input).latents * self.scheduler.init_noise_sigma
