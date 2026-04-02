@@ -38,8 +38,8 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(2, 4, figsize=(10, 5))
     with torch.no_grad():
         for channel in range(4):
-            axs[0, channel].imshow(torchvision.utils.make_grid(sample_hr_norm_tensor.cpu())[channel], cmap='Greys')
-            axs[1, channel].imshow(torchvision.utils.make_grid(output.cpu())[channel], cmap='Greys')
+            axs[0, channel].imshow(torchvision.utils.make_grid(sample_hr_norm_tensor.cpu())[channel])
+            axs[1, channel].imshow(torchvision.utils.make_grid(output.cpu())[channel])
 
     fig.savefig(output_path)
 
