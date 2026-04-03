@@ -27,6 +27,7 @@ class WeatherLDMSuperResolutionPipeline():
             vqvae_path: Path | str="models/vqvae-trained-vanilla/vqvae-trained-vanilla.pt", 
             unet_path: Path | str="models/unet-trained-vanilla/unet-trained-vanilla.pt",
             batch_size=100,
+            use_noise_latents=False,
         ):
         
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -45,6 +46,7 @@ class WeatherLDMSuperResolutionPipeline():
 
         
         self.batch_size = batch_size
+        self.use_noise_latents = use_noise_latents
 
 
     def _process_batch(self, 
@@ -76,18 +78,20 @@ class WeatherLDMSuperResolutionPipeline():
             
             X_normalized = (X - means_lr) / stds_lr
 
-            latents_shape = (self.batch_size, 4, height, width)
-            latents_dtype = next(self.unet.parameters()).dtype
+            if self.use_noise_latents:
+                # Traditional LDM pipeline
+                latents_shape = (self.batch_size, 4, height, width)
+                latents_dtype = next(self.unet.parameters()).dtype
 
-            # noise = randn_tensor(
-            #     shape=latents_shape,
-            #     dtype=latents_dtype,
-            #     device=self.device,
-            # ) * self.scheduler.init_noise_sigma
-            # initial_latents = noise
-
-            interpolated_input = interpolate(X_normalized, scale_factor=4)
-            initial_latents = self.vqvae.encode(interpolated_input).latents * self.scheduler.init_noise_sigma
+                initial_latents = randn_tensor(
+                    shape=latents_shape,
+                    dtype=latents_dtype,
+                    device=self.device,
+                ) * self.scheduler.init_noise_sigma
+            else:
+                # "Hack" pipeline for better results
+                interpolated_input = interpolate(X_normalized, scale_factor=4)
+                initial_latents = self.vqvae.encode(interpolated_input).latents * self.scheduler.init_noise_sigma
 
             self.scheduler.set_timesteps(num_inference_steps)
             timesteps_tensor = self.scheduler.timesteps
@@ -139,8 +143,12 @@ class WeatherLDMSuperResolutionPipeline():
         del temp_tensor
         torch.cuda.empty_cache()
 
+        num_batches = data.sizes["sample"] // self.batch_size
+
         def loop():
-            for X in batch_generator:
+            for i, X in enumerate(batch_generator):
+                print("Batch", (i + 1), "/", num_batches)
+
                 yield self._process_batch(
                     X=X,
                     means_base=means_base,
@@ -149,7 +157,7 @@ class WeatherLDMSuperResolutionPipeline():
                 )
                 torch.cuda.empty_cache()
 
-        Ys_denormalized, Ys = zip(*list(loop()))
+        Ys_denormalized, Ys = zip(*tqdm(list(loop())))
 
         Y_denormalized = torch.cat(list(Ys_denormalized), dim=0)
         Y = torch.cat(list(Ys), dim=0)

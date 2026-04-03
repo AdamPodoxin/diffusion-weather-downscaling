@@ -209,3 +209,4 @@ __marimo__/
 test.ipynb
 data/
 models/
+evaluation/test_outputs
