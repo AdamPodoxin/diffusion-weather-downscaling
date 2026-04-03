@@ -141,7 +141,7 @@ if __name__ == "__main__":
             target=X_normalized,
             dx=batch_dx,
             num_patches_per_side=4,
-            stride=17, # Relatively prime to image size and num patches to avoid grid artifacts
+            stride=16,
         )
 
         loss = recon_loss + commit_loss + psd_loss * PSD_LOSS_MULTIPLIER
