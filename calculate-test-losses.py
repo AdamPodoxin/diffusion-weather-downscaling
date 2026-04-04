@@ -92,7 +92,8 @@ if __name__ == "__main__":
             "sample": i,
             "channel": channel_names[c],
             "normalized": "denormalized",
-            "mse_loss": loss,
+            "loss_type": "MSE",
+            "loss_value": loss,
         }
         for i, losses in enumerate(mse_losses_denormalized)
         for c, loss in enumerate(losses)
@@ -115,13 +116,12 @@ if __name__ == "__main__":
             "sample": i,
             "channel": channel_names[c],
             "normalized": "normalized",
-            "mse_loss": loss,
+            "loss_type": "MSE",
+            "loss_value": loss,
         }
         for i, losses in enumerate(mse_losses_normalized)
         for c, loss in enumerate(losses)
     ])
-
-    mse_losses_df = pd.concat([mse_losses_denormalized_df, mse_losses_normalized_df])
 
     center_lat = (float(args.max_lat) + float(args.min_lat)) / 2.0
     center_lats = torch.ones(1).to(device) * center_lat
@@ -145,7 +145,8 @@ if __name__ == "__main__":
             "sample": i,
             "channel": channel_names[c],
             "normalized": "denormalized",
-            "psd_loss": loss,
+            "loss_type": "PSD",
+            "loss_value": loss,
         }
         for i, losses in enumerate(psd_losses_denormalized)
         for c, loss in enumerate(losses)
@@ -169,18 +170,18 @@ if __name__ == "__main__":
             "sample": i,
             "channel": channel_names[c],
             "normalized": "normalized",
-            "psd_loss": loss,
+            "loss_type": "PSD",
+            "loss_value": loss,
         }
         for i, losses in enumerate(psd_losses_normalized)
         for c, loss in enumerate(losses)
     ])
 
-    psd_losses_df = pd.concat([psd_losses_denormalized_df, psd_losses_normalized_df])
-
-    full_df = pd.merge(
-        left=mse_losses_df,
-        right=psd_losses_df,
-        on=["sample", "channel", "normalized"]
-    )
+    full_df = pd.concat([
+        mse_losses_denormalized_df,
+        mse_losses_normalized_df,
+        psd_losses_denormalized_df,
+        psd_losses_normalized_df,
+    ])
 
     full_df.to_csv(args.output, index=False)
