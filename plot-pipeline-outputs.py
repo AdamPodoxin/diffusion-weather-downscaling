@@ -114,7 +114,7 @@ if __name__ == "__main__":
         predicted_ax: Axes = axs[1, channel_index]
         target_ax: Axes = axs[2, channel_index]
 
-        predicted_ax.set_title(channel)
+        lr_ax.set_title(channel)
 
         cmap = COLOR_MAP[channel]
 
