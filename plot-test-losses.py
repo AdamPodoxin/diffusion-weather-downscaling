@@ -6,7 +6,7 @@ from matplotlib.axes import Axes
 from pathlib import Path
 
 
-SAVE_PATH = Path("plots/loss_plots")
+SAVE_PATH = Path("plots/test_loss_plots")
 
 PIPELINE_ORDER = ["vanilla", "vanilla (noise latents)", "psd", "psd (noise latents)"]
 CHANNEL_ORDER = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "mean_sea_level_pressure"]
