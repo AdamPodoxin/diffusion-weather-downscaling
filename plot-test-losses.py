@@ -6,11 +6,23 @@ from matplotlib.axes import Axes
 from pathlib import Path
 
 
-SAVE_PATH = Path("plots/test_loss_plots")
+SAVE_PATH = Path("plots/test_losses")
 
 PIPELINE_ORDER = ["vanilla", "vanilla (noise latents)", "psd", "psd (noise latents)"]
+PIPELINE_TITLE_MAP = {
+    "vanilla": "standard-LDM\n(custom)",
+    "vanilla (noise latents)": "standard-LDM\n(recommended)", 
+    "psd": "PSD-LDM\n(custom)", 
+    "psd (noise latents)": "PSD-LDM\n(recommended)"
+}
+
 CHANNEL_ORDER = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "mean_sea_level_pressure"]
+
 LOSS_ORDER = ["MSE", "PSD"]
+LOSS_TITLE_MAP = {
+    "MSE": "MSE",
+    "PSD": "PSD Loss",
+}
 
 
 def plot_losses(df: pd.DataFrame, title: str, save_path: Path):
@@ -27,7 +39,7 @@ def plot_losses(df: pd.DataFrame, title: str, save_path: Path):
 
     for subfig_index, subfig in enumerate(subfigs):
         loss_type = LOSS_ORDER[subfig_index]
-        subfig.suptitle(f"{loss_type} Loss")
+        subfig.suptitle(LOSS_TITLE_MAP[loss_type])
 
         axes: list[Axes] = subfig.subplots(nrows=1, ncols=len(CHANNEL_ORDER))
 
@@ -47,6 +59,9 @@ def plot_losses(df: pd.DataFrame, title: str, save_path: Path):
                 showfliers=False,
                 order=PIPELINE_ORDER,
             )
+            
+            ax.set_xticklabels([PIPELINE_TITLE_MAP[p] for p in PIPELINE_ORDER])
+            
     
     plt.savefig(save_path)
 
