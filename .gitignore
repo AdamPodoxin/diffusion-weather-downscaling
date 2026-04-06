@@ -210,3 +210,4 @@ test.ipynb
 data/
 models/
 evaluation/test_outputs
+evaluation/test_vqvae_reconstructions
