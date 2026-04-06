@@ -22,6 +22,6 @@ if __name__ == "__main__":
 
     stats_df = normalized_df \
                 .groupby(["pipeline", "channel", "loss_type"])["loss_value"] \
-                .aggregate(["mean", "sem"])
+                .aggregate(["median", "std"])
     
     stats_df.to_csv(SAVE_PATH)
