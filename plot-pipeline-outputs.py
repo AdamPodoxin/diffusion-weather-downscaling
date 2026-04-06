@@ -3,10 +3,10 @@ from pathlib import Path
 import xarray as xr
 import torch
 from torch.nn.functional import interpolate
-from torchvision.utils import make_grid
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from cartopy.mpl.geoaxes import GeoAxes
 
 CHANNEL_ORDER = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_temperature", "mean_sea_level_pressure"]
 COLOR_MAP = {
@@ -15,7 +15,6 @@ COLOR_MAP = {
     "2m_temperature": "autumn",
     "mean_sea_level_pressure": "cool",
 }
-
 
 def parse_args():
     p = argparse.ArgumentParser("Visualize pipeline outputs")
@@ -53,13 +52,15 @@ def parse_args():
 
     return p.parse_args()
 
-
 if __name__ == "__main__":
     args = parse_args()
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     ds_test = xr.open_zarr(args.test_file)
+
+    lats = ds_test["latitude"].values
+    lons = ds_test["longitude"].values
+    
     X_hr = ds_test["X_hr"]
     X_lr = ds_test["X_lr"]
 
@@ -67,8 +68,7 @@ if __name__ == "__main__":
     lr = torch.from_numpy(X_lr.values).to(device)
     
     num_samples = target.shape[0]
-    height = target.shape[2]
-    width = target.shape[3]
+    height, width = target.shape[2], target.shape[3]
     
     with torch.no_grad():
         means_base = target \
@@ -97,29 +97,49 @@ if __name__ == "__main__":
 
     sample_index = int(args.sample)
 
-    target_grid = make_grid(target_normalized.cpu()[sample_index])
-    lr_grid = make_grid(lr_interpolated.cpu()[sample_index])
-    predicted_grid = make_grid(predicted_normalized.cpu()[sample_index])
-
-    fig, axs = plt.subplots(3, 4, figsize=(16, 12))
+    fig, axs = plt.subplots(
+        nrows=3, ncols=4, 
+        figsize=(15, 10), 
+        subplot_kw={"projection": ccrs.PlateCarree()},
+        constrained_layout=True,
+    )
 
     fig.suptitle(f"{args.pipeline} pipeline outputs", fontsize=20)
 
-    axs[0, 0].set_ylabel("LR\ninterpolated", rotation=0, labelpad=40, fontsize=14)
-    axs[1, 0].set_ylabel("Predicted", rotation=0, labelpad=40, fontsize=14)
-    axs[2, 0].set_ylabel("Target", rotation=0, labelpad=40, fontsize=14)
+    # Row labels
+    row_names = ["LR\nInterpolated", "Predicted", "Target"]
+    for ax, row_name in zip(axs[:, 0], row_names):
+        ax: GeoAxes = ax
+
+        # Use a secondary axis or text for row labels because Cartopy axes 
+        # behave differently with set_ylabel
+        ax.text(
+            x=-0.05, y=0.5,
+            s=row_name,
+            transform=ax.transAxes,
+            va="center", ha="right",
+            fontsize=14,
+        )
 
     for channel_index, channel in enumerate(CHANNEL_ORDER):
-        lr_ax: Axes = axs[0, channel_index]
-        predicted_ax: Axes = axs[1, channel_index]
-        target_ax: Axes = axs[2, channel_index]
-
-        lr_ax.set_title(channel)
-
         cmap = COLOR_MAP[channel]
 
-        lr_ax.imshow(lr_grid[channel_index], cmap=cmap)
-        predicted_ax.imshow(predicted_grid[channel_index], cmap=cmap)
-        target_ax.imshow(target_grid[channel_index], cmap=cmap)
+        data_rows = [
+            lr_interpolated[sample_index, channel_index].cpu().numpy(),
+            predicted_normalized[sample_index, channel_index].cpu().numpy(),
+            target_normalized[sample_index, channel_index].cpu().numpy()
+        ]
 
-    fig.savefig(args.output, bbox_inches="tight")
+        for row_index in range(3):
+            ax: GeoAxes = axs[row_index, channel_index]
+            
+            ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
+            ax.add_feature(cfeature.BORDERS, linestyle=':', alpha=0.5)
+            
+            im = ax.pcolormesh(lons, lats, data_rows[row_index], transform=ccrs.PlateCarree(), cmap=cmap)
+            
+            if row_index == 0:
+                ax.set_title(channel, fontsize=12)
+
+    fig.savefig(args.output, dpi=200)
+    plt.close()
