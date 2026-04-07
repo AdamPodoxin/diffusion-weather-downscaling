@@ -8,7 +8,7 @@ from isotropic_fpsd_loss import calculate_batch_dx, isotropic_psd_loss
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Generate test outputs for evaluation")
+    p = argparse.ArgumentParser(description="Calculate pipeline output or VQVAE reconstruction test losses for evaluation")
 
     p.add_argument(
         "--input",
