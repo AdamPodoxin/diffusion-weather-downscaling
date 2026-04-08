@@ -28,7 +28,7 @@ LOSS_TITLE_MAP = {
 def plot_losses(df: pd.DataFrame, title: str, save_path: Path):
     fig = plt.figure(
         constrained_layout=True,
-        figsize=(24, 12),
+        figsize=(24, 16),
     )
     fig.suptitle(title, fontsize=20)
 
@@ -61,6 +61,9 @@ def plot_losses(df: pd.DataFrame, title: str, save_path: Path):
             )
             
             ax.set_xticklabels([PIPELINE_TITLE_MAP[p] for p in PIPELINE_ORDER])
+
+            lowest_median = data.groupby("pipeline")["loss_value"].median().min()
+            ax.axhline(lowest_median, linestyle="--", color="black", alpha=0.5)
             
     
     plt.savefig(save_path)
