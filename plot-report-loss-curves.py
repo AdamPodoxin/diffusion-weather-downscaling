@@ -13,6 +13,9 @@ def plot_and_save(df: pd.DataFrame, model_name: str, save_path: Path):
     grid.figure.subplots_adjust(top=0.85)
     grid.set_titles("{col_name}")
     grid.figure.axes[0].xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    # train_line = plt.Line2D([], [], color="blue", linestyle="-", label="Train loss")
+    # val_line = plt.Line2D([], [], color="orange", linestyle="--", label="Validation loss")
+    # grid.figure.legend(handles=[train_line, val_line], loc="upper center", ncol=2)
 
     plt.savefig(save_path, bbox_inches="tight")
 
