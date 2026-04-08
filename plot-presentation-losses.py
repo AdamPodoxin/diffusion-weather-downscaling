@@ -20,7 +20,7 @@ CHANNEL_ORDER = ["10m_u_component_of_wind", "10m_v_component_of_wind", "2m_tempe
 
 
 if __name__ == "__main__":
-    sns.set_theme()
+    sns.set_theme(context="talk")
 
     vanilla_df = pd.read_csv("evaluation/losses/vanilla.csv")
     vanilla_df["pipeline"] = "vanilla"
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
     fig, axes = plt.subplots(
         nrows=1, ncols=4,
-        figsize=(24, 12),
+        figsize=(36, 16),
         constrained_layout=True,
     )
 
@@ -48,7 +48,7 @@ if __name__ == "__main__":
         data = normalized_mse_df[normalized_mse_df["channel"] == channel]
 
         ax: Axes = ax
-        ax.set_title(channel)
+        ax.set_title(channel, fontsize=24)
 
         sns.boxplot(
             ax=ax,
@@ -60,10 +60,11 @@ if __name__ == "__main__":
             order=PIPELINE_ORDER,
         )
 
-        lowest_median = data.groupby("pipeline")["loss_value"].median().min()
+        ax.set_xticklabels([PIPELINE_TITLE_MAP[p] for p in PIPELINE_ORDER])
 
+        lowest_median = data.groupby("pipeline")["loss_value"].median().min()
         ax.axhline(lowest_median, linestyle="--", color="black", alpha=0.5)
     
-    fig.suptitle("MSE loss per channel for each pipeline")
+    fig.suptitle("MSE loss per channel for each pipeline", fontsize=32)
 
     plt.savefig("plots/presentation_test_losses/normalized_losses.png", bbox_inches="tight")
