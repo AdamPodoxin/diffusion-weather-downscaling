@@ -38,6 +38,12 @@ def parse_args():
         help="Sample index",
     )
     p.add_argument(
+        "--dpi",
+        type=int,
+        default=100,
+        help="Image DPI",
+    )
+    p.add_argument(
         "--lr",
         action="store_true",
         help="Plot the LR interpolated for comparison",
@@ -155,5 +161,5 @@ if __name__ == "__main__":
             if row == 0:
                 ax.set_title(col_names[col], fontsize=16)
 
-    fig.savefig(args.output, dpi=100)
+    fig.savefig(args.output, dpi=int(args.dpi))
     plt.close()
